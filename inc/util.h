@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <vector>
 
@@ -75,12 +74,6 @@ std::pair<It, It> get_span_p(It begin, It end, typename std::iterator_traits<It>
 {
   auto [span_begin, span_end] = get_span(begin, end, sz);
   return {span_begin, std::find_if_not(span_begin, span_end, std::forward<F>(func))};
-}
-
-template <typename It, typename F>
-std::pair<It, It> get_span_p(It begin, It end, F&& func)
-{
-  return get_span_p(begin, end, std::numeric_limits<typename std::iterator_traits<It>::difference_type>::max(), std::forward<F>(func));
 }
 
 } // namespace champsim

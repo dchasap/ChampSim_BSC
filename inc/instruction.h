@@ -21,6 +21,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <limits>
 #include <vector>
 

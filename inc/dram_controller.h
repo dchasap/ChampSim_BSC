@@ -18,12 +18,13 @@
 #define DRAM_H
 
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <limits>
-#include <optional>
 
 #include "champsim_constants.h"
-#include "channel.h"
+#include "champsim.h"
+#include "memory_class.h"
 #include "operable.h"
 #include "util.h"
 
@@ -35,27 +36,7 @@ struct dram_stats {
 };
 
 struct DRAM_CHANNEL {
-  using response_type = typename champsim::channel::response_type;
-  struct request_type {
-    bool scheduled = false;
-    bool forward_checked = false;
-
-    uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
-
-    uint32_t pf_metadata = 0;
-
-    uint64_t address = 0;
-    uint64_t v_address = 0;
-    uint64_t data = 0;
-    uint64_t event_cycle = std::numeric_limits<uint64_t>::max();
-
-    std::vector<std::reference_wrapper<ooo_model_instr>> instr_depend_on_me{};
-    std::vector<std::deque<response_type>*> to_return{};
-
-    explicit request_type(typename champsim::channel::request_type);
-  };
-  using value_type = request_type;
-  using queue_type = std::vector<std::optional<value_type>>;
+  using queue_type = std::vector<PACKET>;
   queue_type WQ{DRAM_WQ_SIZE}, RQ{DRAM_RQ_SIZE};
 
   struct BANK_REQUEST {
@@ -76,18 +57,13 @@ struct DRAM_CHANNEL {
   uint64_t dbus_cycle_available = 0;
 
   using stats_type = dram_stats;
-  stats_type roi_stats, sim_stats;
+  std::vector<stats_type> roi_stats{}, sim_stats{};
 
   void check_collision();
 };
 
-class MEMORY_CONTROLLER : public champsim::operable
+class MEMORY_CONTROLLER : public champsim::operable, public MemoryRequestConsumer
 {
-  using channel_type = champsim::channel;
-  using request_type = typename channel_type::request_type;
-  using response_type = typename channel_type::response_type;
-  std::vector<channel_type*> queues;
-
   // Latencies
   const uint64_t tRP, tRCD, tCAS, DRAM_DBUS_TURN_AROUND_TIME, DRAM_DBUS_RETURN_TIME;
 
@@ -96,19 +72,23 @@ class MEMORY_CONTROLLER : public champsim::operable
   constexpr static std::size_t DRAM_WRITE_LOW_WM = ((DRAM_WQ_SIZE * 6) >> 3);          // 6/8th
   constexpr static std::size_t MIN_DRAM_WRITES_PER_SWITCH = ((DRAM_WQ_SIZE * 1) >> 2); // 1/4
 
-  void initiate_requests();
-  bool add_rq(const request_type& pkt, champsim::channel* ul);
-  bool add_wq(const request_type& pkt);
-
 public:
   std::array<DRAM_CHANNEL, DRAM_CHANNELS> channels;
 
-  MEMORY_CONTROLLER(double freq_scale, int io_freq, double t_rp, double t_rcd, double t_cas, double turnaround, std::vector<channel_type*>&& ul);
+  MEMORY_CONTROLLER(double freq_scale, int io_freq, double t_rp, double t_rcd, double t_cas, double turnaround);
 
   void initialize() override final;
   void operate() override final;
   void begin_phase() override final;
   void end_phase(unsigned cpu) override final;
+
+  bool add_rq(const PACKET& packet) override final;
+  bool add_wq(const PACKET& packet) override final;
+  bool add_pq(const PACKET& packet) override final;
+  bool add_ptwq(const PACKET&) override final { assert(0); }
+
+  std::size_t get_occupancy(uint8_t queue_type, uint64_t address) override final;
+  std::size_t get_size(uint8_t queue_type, uint64_t address) override final;
 
   std::size_t size() const;
 

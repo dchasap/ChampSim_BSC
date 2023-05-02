@@ -20,6 +20,10 @@
 #include <cstdint>
 #include <exception>
 
+#define ENABLE_EXTRA_CACHE_STATS
+#define FORCE_HIT
+#define XDIP_REPLACEMENT_POLICY
+
 namespace champsim
 {
 struct deadlock : public std::exception {
@@ -32,6 +36,7 @@ constexpr bool debug_print = true;
 #else
 constexpr bool debug_print = false;
 #endif
+
 } // namespace champsim
 
 #endif

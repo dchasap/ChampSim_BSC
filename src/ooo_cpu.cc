@@ -18,7 +18,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <numeric>
+#include <utility>
+#include <vector>
 
 #include "cache.h"
 #include "champsim.h"
@@ -83,20 +86,20 @@ void O3_CPU::begin_phase()
   stats.name = "CPU " + std::to_string(cpu);
   stats.begin_instrs = num_retired;
   stats.begin_cycles = current_cycle;
-  sim_stats = stats;
+  sim_stats.push_back(stats);
 }
 
 void O3_CPU::end_phase(unsigned finished_cpu)
 {
   // Record where the phase ended (overwrite if this is later)
-  sim_stats.end_instrs = num_retired;
-  sim_stats.end_cycles = current_cycle;
+  sim_stats.back().end_instrs = num_retired;
+  sim_stats.back().end_cycles = current_cycle;
 
   if (finished_cpu == this->cpu) {
     finish_phase_instr = num_retired;
     finish_phase_cycle = current_cycle;
 
-    roi_stats = sim_stats;
+    roi_stats.push_back(sim_stats.back());
   }
 }
 
@@ -146,7 +149,7 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
   bool stop_fetch = false;
 
   // handle branch prediction for all instructions as at this point we do not know if the instruction is a branch
-  sim_stats.total_branch_types[arch_instr.branch_type]++;
+  sim_stats.back().total_branch_types[arch_instr.branch_type]++;
   auto [predicted_branch_target, always_taken] = impl_btb_prediction(arch_instr.ip);
   arch_instr.branch_prediction = impl_predict_branch(arch_instr.ip) || always_taken;
   if (arch_instr.branch_prediction == 0)
@@ -159,13 +162,13 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
     }
 
     // call code prefetcher every time the branch predictor is used
-    l1i->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch_type, predicted_branch_target);
+    static_cast<CACHE*>(L1I_bus.lower_level)->impl_prefetcher_branch_operate(arch_instr.ip, arch_instr.branch_type, predicted_branch_target);
 
     if (predicted_branch_target != arch_instr.branch_target
         || (arch_instr.branch_type == BRANCH_CONDITIONAL
             && arch_instr.branch_taken != arch_instr.branch_prediction)) { // conditional branches are re-evaluated at decode when the target is computed
-      sim_stats.total_rob_occupancy_at_branch_mispredict += std::size(ROB);
-      sim_stats.branch_type_misses[arch_instr.branch_type]++;
+      sim_stats.back().total_rob_occupancy_at_branch_mispredict += std::size(ROB);
+      sim_stats.back().branch_type_misses[arch_instr.branch_type]++;
       if (!warmup) {
         fetch_resume_cycle = std::numeric_limits<uint64_t>::max();
         stop_fetch = true;
@@ -249,11 +252,15 @@ void O3_CPU::fetch_instruction()
 
 bool O3_CPU::do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, std::deque<ooo_model_instr>::iterator end)
 {
-  CacheBus::request_type fetch_packet;
+  PACKET fetch_packet;
   fetch_packet.v_address = begin->ip;
   fetch_packet.instr_id = begin->instr_id;
   fetch_packet.ip = begin->ip;
   fetch_packet.instr_depend_on_me = {begin, end};
+
+#if defined ENABLE_EXTRA_CACHE_STATS || defined FORCE_HIT || defined FORCE_PTE_HIT
+	fetch_packet.is_instr = true;
+#endif
 
   if constexpr (champsim::debug_print) {
     std::cout << "[IFETCH] " << __func__ << " instr_id: " << begin->instr_id << std::hex;
@@ -496,10 +503,14 @@ void O3_CPU::do_finish_store(const LSQ_ENTRY& sq_entry)
 
 bool O3_CPU::do_complete_store(const LSQ_ENTRY& sq_entry)
 {
-  CacheBus::request_type data_packet;
+  PACKET data_packet;
   data_packet.v_address = sq_entry.virtual_address;
   data_packet.instr_id = sq_entry.instr_id;
   data_packet.ip = sq_entry.ip;
+
+#if defined ENABLE_EXTRA_CACHE_STATS || defined FORCE_HIT || defined FORCE_PTE_HIT
+	data_packet.is_instr = sq_entry.is_instr;
+#endif
 
   if constexpr (champsim::debug_print) {
     std::cout << "[SQ] " << __func__ << " instr_id: " << sq_entry.instr_id << std::endl;
@@ -510,10 +521,14 @@ bool O3_CPU::do_complete_store(const LSQ_ENTRY& sq_entry)
 
 bool O3_CPU::execute_load(const LSQ_ENTRY& lq_entry)
 {
-  CacheBus::request_type data_packet;
+  PACKET data_packet;
   data_packet.v_address = lq_entry.virtual_address;
   data_packet.instr_id = lq_entry.instr_id;
   data_packet.ip = lq_entry.ip;
+
+#if defined ENABLE_EXTRA_CACHE_STATS || defined FORCE_HIT || defined FORCE_PTE_HIT
+	data_packet.is_instr = lq_entry.is_instr;
+#endif
 
   if constexpr (champsim::debug_print) {
     std::cout << "[LQ] " << __func__ << " instr_id: " << lq_entry.instr_id << std::endl;
@@ -560,8 +575,8 @@ void O3_CPU::complete_inflight_instruction()
 
 void O3_CPU::handle_memory_return()
 {
-  for (auto l1i_bw = FETCH_WIDTH, to_read = L1I_BANDWIDTH; l1i_bw > 0 && to_read > 0 && !L1I_bus.lower_level->returned.empty(); --to_read) {
-    auto& l1i_entry = L1I_bus.lower_level->returned.front();
+  for (auto l1i_bw = FETCH_WIDTH, to_read = L1I_BANDWIDTH; l1i_bw > 0 && to_read > 0 && !L1I_bus.PROCESSED.empty(); --to_read) {
+    PACKET& l1i_entry = L1I_bus.PROCESSED.front();
 
     while (l1i_bw > 0 && !l1i_entry.instr_depend_on_me.empty()) {
       ooo_model_instr& fetched = l1i_entry.instr_depend_on_me.front();
@@ -579,11 +594,11 @@ void O3_CPU::handle_memory_return()
 
     // remove this entry if we have serviced all of its instructions
     if (l1i_entry.instr_depend_on_me.empty())
-      L1I_bus.lower_level->returned.pop_front();
+      L1I_bus.PROCESSED.pop_front();
   }
 
-  auto l1d_it = std::begin(L1D_bus.lower_level->returned);
-  for (auto l1d_bw = L1D_BANDWIDTH; l1d_bw > 0 && l1d_it != std::end(L1D_bus.lower_level->returned); --l1d_bw, ++l1d_it) {
+  auto l1d_it = std::begin(L1D_bus.PROCESSED);
+  for (auto l1d_bw = L1D_BANDWIDTH; l1d_bw > 0 && l1d_it != std::end(L1D_bus.PROCESSED); --l1d_bw, ++l1d_it) {
     for (auto& lq_entry : LQ) {
       if (lq_entry.has_value() && lq_entry->fetch_issued && lq_entry->virtual_address >> LOG2_BLOCK_SIZE == l1d_it->v_address >> LOG2_BLOCK_SIZE) {
         lq_entry->finish(std::begin(ROB), std::end(ROB));
@@ -591,7 +606,7 @@ void O3_CPU::handle_memory_return()
       }
     }
   }
-  L1D_bus.lower_level->returned.erase(std::begin(L1D_bus.lower_level->returned), l1d_it);
+  L1D_bus.PROCESSED.erase(std::begin(L1D_bus.PROCESSED), l1d_it);
 }
 
 void O3_CPU::retire_rob()
@@ -607,6 +622,8 @@ void O3_CPU::retire_rob()
   if (!std::empty(ROB) && (ROB.front().event_cycle + DEADLOCK_CYCLE) <= current_cycle)
     throw champsim::deadlock{cpu};
 }
+
+void CacheBus::return_data(const PACKET& packet) { PROCESSED.push_back(packet); }
 
 void O3_CPU::print_deadlock()
 {
@@ -686,23 +703,21 @@ void LSQ_ENTRY::finish(std::deque<ooo_model_instr>::iterator begin, std::deque<o
   }
 }
 
-bool CacheBus::issue_read(request_type data_packet)
+bool CacheBus::issue_read(PACKET data_packet)
 {
   data_packet.address = data_packet.v_address;
-  data_packet.is_translated = false;
   data_packet.cpu = cpu;
   data_packet.type = LOAD;
+  data_packet.to_return = {this};
 
   return lower_level->add_rq(data_packet);
 }
 
-bool CacheBus::issue_write(request_type data_packet)
+bool CacheBus::issue_write(PACKET data_packet)
 {
   data_packet.address = data_packet.v_address;
-  data_packet.is_translated = false;
   data_packet.cpu = cpu;
   data_packet.type = WRITE;
-  data_packet.response_requested = false;
 
   return lower_level->add_wq(data_packet);
 }

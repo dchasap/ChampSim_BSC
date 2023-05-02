@@ -64,10 +64,41 @@ void champsim::plain_printer::print(CACHE::stats_type stats)
       TOTAL_MISS += stats.misses.at(type.second).at(cpu);
     }
 
+#if defined ENABLE_EXTRA_CACHE_STATS
+    uint64_t TOTAL_iHIT = 0, TOTAL_iMISS = 0, TOTAL_dHIT = 0, TOTAL_dMISS = 0,
+						 TOTAL_itHIT = 0, TOTAL_itMISS = 0, TOTAL_dtHIT = 0, TOTAL_dtMISS = 0;
+    for (const auto& type : types) {
+      TOTAL_iHIT += stats.ihits.at(type.second).at(cpu);
+      TOTAL_iMISS += stats.imisses.at(type.second).at(cpu);
+      TOTAL_dHIT += stats.dhits.at(type.second).at(cpu);
+      TOTAL_dMISS += stats.dmisses.at(type.second).at(cpu);
+      TOTAL_itHIT += stats.ithits.at(type.second).at(cpu);
+      TOTAL_itMISS += stats.itmisses.at(type.second).at(cpu);
+      TOTAL_dtHIT += stats.dthits.at(type.second).at(cpu);
+      TOTAL_dtMISS += stats.dtmisses.at(type.second).at(cpu);
+    }
+#endif
+
     stream << stats.name << " TOTAL       ";
     stream << "ACCESS: " << std::setw(10) << TOTAL_HIT + TOTAL_MISS << "  ";
     stream << "HIT: " << std::setw(10) << TOTAL_HIT << "  ";
-    stream << "MISS: " << std::setw(10) << TOTAL_MISS << std::endl;
+    stream << "MISS: " << std::setw(10) << TOTAL_MISS;
+#if defined ENABLE_EXTRA_CACHE_STATS
+		stream << "  ";
+    stream << "iACCESS: " << std::setw(10) << TOTAL_iHIT + TOTAL_iMISS << "  ";
+    stream << "iHIT: " << std::setw(10) << TOTAL_iHIT << "  ";
+    stream << "iMISS: " << std::setw(10) << TOTAL_iMISS << "  ";
+    stream << "dACCESS: " << std::setw(10) << TOTAL_dHIT + TOTAL_dMISS << "  ";
+    stream << "dHIT: " << std::setw(10) << TOTAL_dHIT << "  ";
+    stream << "dMISS: " << std::setw(10) << TOTAL_dMISS << "  ";
+    stream << "itACCESS: " << std::setw(10) << TOTAL_itHIT + TOTAL_itMISS << "  ";
+    stream << "itHIT: " << std::setw(10) << TOTAL_itHIT << "  ";
+    stream << "itMISS: " << std::setw(10) << TOTAL_itMISS << "  ";
+    stream << "dtACCESS: " << std::setw(10) << TOTAL_dtHIT + TOTAL_dtMISS << "  ";
+    stream << "dtHIT: " << std::setw(10) << TOTAL_dtHIT << "  ";
+    stream << "dtMISS: " << std::setw(10) << TOTAL_dtMISS;
+#endif
+		stream << std::endl;
 
     for (const auto& type : types) {
       std::ostringstream name;
@@ -75,7 +106,23 @@ void champsim::plain_printer::print(CACHE::stats_type stats)
       stream << stats.name << " " << name.str() << " ";
       stream << "ACCESS: " << std::setw(10) << stats.hits[type.second][cpu] + stats.misses[type.second][cpu] << "  ";
       stream << "HIT: " << std::setw(10) << stats.hits[type.second][cpu] << "  ";
-      stream << "MISS: " << std::setw(10) << stats.misses[type.second][cpu] << std::endl;
+      stream << "MISS: " << std::setw(10) << stats.misses[type.second][cpu];
+#if defined ENABLE_EXTRA_CACHE_STATS
+			stream << "  ";
+      stream << "iACCESS: " << std::setw(10) << stats.ihits[type.second][cpu] + stats.imisses[type.second][cpu] << "  ";
+      stream << "iHIT: " << std::setw(10) << stats.ihits[type.second][cpu] << "  ";
+      stream << "iMISS: " << std::setw(10) << stats.imisses[type.second][cpu] << "  ";
+      stream << "dACCESS: " << std::setw(10) << stats.dhits[type.second][cpu] + stats.dmisses[type.second][cpu] << "  ";
+      stream << "dHIT: " << std::setw(10) << stats.dhits[type.second][cpu] << "  ";
+      stream << "dMISS: " << std::setw(10) << stats.dmisses[type.second][cpu] << "  ";
+      stream << "itACCESS: " << std::setw(10) << stats.ithits[type.second][cpu] + stats.itmisses[type.second][cpu] << "  ";
+      stream << "itHIT: " << std::setw(10) << stats.ithits[type.second][cpu] << "  ";
+      stream << "itMISS: " << std::setw(10) << stats.itmisses[type.second][cpu] << "  ";
+      stream << "dtACCESS: " << std::setw(10) << stats.dthits[type.second][cpu] + stats.dtmisses[type.second][cpu] << "  ";
+      stream << "dtHIT: " << std::setw(10) << stats.dthits[type.second][cpu] << "  ";
+      stream << "dtMISS: " << std::setw(10) << stats.dtmisses[type.second][cpu];
+#endif
+			stream << std::endl;
     }
 
     stream << stats.name << " PREFETCH  ";
