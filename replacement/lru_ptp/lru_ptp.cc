@@ -30,9 +30,20 @@ namespace {
 
 void CACHE::initialize_replacement() 
 {
-	::MIN_EVICTION_POSITION = std::stoi(getenv("MIN_EVICTION_POSITION"));
+	if (getenv("MIN_EVICTION_POSITION")) {
+		::MIN_EVICTION_POSITION = std::stoi(getenv("MIN_EVICTION_POSITION"));
+	}
+
+	if (getenv("MIN_EVICTION_POSITION_L1D") && (NAME.compare("cpu0_L1D") == 0)) {
+		::MIN_EVICTION_POSITION = std::stoi(getenv("MIN_EVICTION_POSITION_L1D"));
+	}
+
+	if (getenv("MIN_EVICTION_POSITION_L2C") && (NAME.compare("cpu0_L2C") == 0)) {
+		::MIN_EVICTION_POSITION = std::stoi(getenv("MIN_EVICTION_POSITION_L2C"));
+	}
+
 	std::cout << NAME << " is using LRU_PTP" << std::endl; 
-	std::cout << "\tMIN_EVICTION_POSITION" << ::MIN_EVICTION_POSITION << std::endl;
+	std::cout << "\tMIN_EVICTION_POSITION:" << ::MIN_EVICTION_POSITION << std::endl;
 
 	::least_recently_used[this] = std::vector<eviction_entry>(NUM_SET * NUM_WAY); 
 }
@@ -40,6 +51,16 @@ void CACHE::initialize_replacement()
 // find replacement victim
 uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set, uint64_t ip, uint64_t full_addr, uint32_t type)
 {
+
+	// first lookup for an invalid entry
+	for (uint32_t i = 0; i < NUM_WAY; i++) {
+		if (!current_set[i].valid) {
+			//std::cout << "invalid:" << i << std::endl;
+			return i;
+
+		}
+	}
+
 	uint32_t lru_victim_index = 0;
 	uint32_t alt_victim_index = 0, max_alt_lru = 0;
 	for (uint32_t i = 0; i < NUM_WAY; i++) {
@@ -47,29 +68,44 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 		if (::least_recently_used[this][set * NUM_WAY + i].lru_value == (NUM_WAY-1)) {
 			lru_victim_index = i;
 		}
-		
-		if (::least_recently_used[this][set * NUM_WAY + i].is_pte 
-				&& ::least_recently_used[this][set * NUM_WAY + i].is_data 
+/*	
+		std::cout << "\tis_data:" << ::least_recently_used[this][set * NUM_WAY + i].is_data << std::endl;  
+		std::cout << "\tis_pte:" << ::least_recently_used[this][set * NUM_WAY + i].is_pte << std::endl;  
+		std::cout << "\tlru:" << ::least_recently_used[this][set * NUM_WAY + i].lru_value << std::endl;  
+		std::cout << "\tmax_lru:" << max_alt_lru << std::endl;  
+*/
+		if (!(::least_recently_used[this][set * NUM_WAY + i].is_pte && ::least_recently_used[this][set * NUM_WAY + i].is_data)
 				&& ::least_recently_used[this][set * NUM_WAY + i].lru_value > max_alt_lru) {
 
+//			std::cout << "updating alt lru" << std::endl;
 			max_alt_lru = ::least_recently_used[this][set * NUM_WAY + i].lru_value;
 			alt_victim_index = i;
 
 		}
-		
+	
 	}
 
+//	std::cout << "alt_lru:" << max_alt_lru << std::endl;
 	if (max_alt_lru >= MIN_EVICTION_POSITION) {
 		// adjust lru value to entries that should have been evicted instead
 		for (uint32_t i = 0; i < NUM_WAY; i++) {
-    	if (::least_recently_used[this][set * NUM_WAY + i].lru_value > max_alt_lru) {
+    	if (::least_recently_used[this][set * NUM_WAY + i].lru_value >= max_alt_lru) {
     		::least_recently_used[this][set * NUM_WAY + i].lru_value--;
 			}
   	}
-
+/*
+		std::cout << "evicting alt:" << alt_victim_index << std::endl;
+		std::cout << "\tis_data:" << ::least_recently_used[this][set * NUM_WAY + alt_victim_index].is_data << std::endl;  
+		std::cout << "\tis_pte:" << ::least_recently_used[this][set * NUM_WAY + alt_victim_index].is_pte << std::endl;  
+*/
 		return alt_victim_index;
+		//return MIN_EVICTION_POSITION;
 	}
-
+/*
+	std::cout << "evictin lru:" << lru_victim_index << std::endl;
+	std::cout << "\tis_data:" << ::least_recently_used[this][set * NUM_WAY + lru_victim_index].is_data << std::endl;  
+	std::cout << "\tis_pte:" << ::least_recently_used[this][set * NUM_WAY + lru_victim_index].is_pte << std::endl;  
+*/
 	return lru_victim_index;
 	//return MIN_EVICTION_POSITION;
 }
@@ -90,8 +126,13 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
 		}
   }
   ::least_recently_used[this][set * NUM_WAY + way].lru_value = 0; // promote to the MRU position
-	::least_recently_used[this][set * NUM_SET + way].is_pte = static_cast<bool>(hit);
-	::least_recently_used[this][set * NUM_SET + way].is_data = !static_cast<bool>(type);
+/*
+	std::cout << "addr::" << std::hex << full_addr << std::dec << std::endl;  
+	std::cout << "\tis_data:" << !(static_cast<bool>(type)) << std::endl;  
+	std::cout << "\tis_pte:" << (static_cast<bool>(hit)) << std::endl;  
+*/
+	::least_recently_used[this][set * NUM_WAY + way].is_data = !(static_cast<bool>(type));
+	::least_recently_used[this][set * NUM_WAY + way].is_pte = static_cast<bool>(hit);
 	return;
 }
 

@@ -35,6 +35,23 @@
 #include "vmem.h"
 #endif
 
+#if defined ENABLE_EXTRA_CACHE_STATS
+#include "reuse_dist.h"
+#endif
+
+#if defined PTP_REPLACEMENT_POLICY
+#include <cmath>
+#endif
+
+#if defined TRACK_BRANCH_HISTORY 
+extern uint64_t global_path_history_MHRP;
+extern uint64_t global_path_history;
+extern uint64_t uncondIndHistory;
+extern uint64_t condHistory;
+extern uint64_t uncondIndHistory_old;
+extern uint64_t condHistory_old;
+#endif
+
 struct cache_stats {
   std::string name;
   // prefetch stats
@@ -56,7 +73,12 @@ struct cache_stats {
   std::array<std::array<uint64_t, NUM_CPUS>, NUM_TYPES> itmisses = {};
 	std::array<std::array<uint64_t, NUM_CPUS>, NUM_TYPES> dthits = {};
   std::array<std::array<uint64_t, NUM_CPUS>, NUM_TYPES> dtmisses = {};
+	uint64_t total_imiss_latency = 0;
+	uint64_t total_dmiss_latency = 0;
+	uint64_t total_itmiss_latency = 0;
+	uint64_t total_dtmiss_latency = 0;
 #endif
+
 
   uint64_t total_miss_latency = 0;
 };
@@ -108,7 +130,6 @@ class CACHE : public champsim::operable, public MemoryRequestConsumer, public Me
 		bool is_pte = false;
 #endif
 
-
 /*
 #if defined ENABLE_EXTRA_CACHE_STATS || defined FORCE_HIT || defined FORCE_PTE_HIT
 		bool is_instr = false;
@@ -117,6 +138,15 @@ class CACHE : public champsim::operable, public MemoryRequestConsumer, public Me
 */
   };
   using set_type = std::vector<BLOCK>;
+
+#if defined ENABLE_TRANSLATION_AWARE_REPLACEMENT
+	struct REP_POL_XARGS {
+		bool is_instr = false;
+		bool is_pte = false;
+		bool is_replay = false;
+		std::size_t translation_level = 0;
+	};
+#endif
 
   std::pair<set_type::iterator, set_type::iterator> get_set_span(uint64_t address);
   std::pair<set_type::const_iterator, set_type::const_iterator> get_set_span(uint64_t address) const;
@@ -200,6 +230,11 @@ public:
 
   std::vector<stats_type> sim_stats{}, roi_stats{};
 
+#if defined ENABLE_EXTRA_CACHE_STATS
+//		ReuseDistanceCalculator* reuseDist;
+			RecallDistanceMonitor* recallDistMon;
+#endif
+
   NonTranslatingQueues& queues;
   std::deque<PACKET> MSHR;
   std::deque<PACKET> inflight_writes;
@@ -280,7 +315,29 @@ public:
 			}
 		}
 #endif 
+
+#if defined ENABLE_EXTRA_CACHE_STATS
+		std::string recall_dist_filename_prefix = getenv("RECALL_DIST_FILENAME_PREFIX");
+
+		bool enable_recallDistMon = false;
+		if (NAME.compare("cpu0_STLB") == 0) {
+			enable_recallDistMon = true;
+		} else if ((NAME.compare("cpu0_L1D") == 0)) {
+			enable_recallDistMon = true;
+		} else if ((NAME.compare("cpu0_L2C") == 0)) {
+			enable_recallDistMon = true;
+		} else if ((NAME.compare("LLC") == 0)) {
+			enable_recallDistMon = true;	
+		}
+
+		recallDistMon = new RecallDistanceMonitor(NUM_SET, NUM_WAY, OFFSET_BITS,
+																							recall_dist_filename_prefix + "_" + NAME + ".csv",
+																							true, enable_recallDistMon);
+
+#endif
   }
+
+	//~CACHE() { std::cout << "***** CACHE DESTROYER *****" << std::endl; };
 };
 
 #endif

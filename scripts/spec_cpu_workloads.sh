@@ -404,3 +404,15 @@ SPEC_CPU_CACTUSADM="
 "
 
 
+SPEC_MEM_2017="
+605.mcf_s-1152B.champsimtrace.xz
+605.mcf_s-1536B.champsimtrace.xz
+605.mcf_s-1554B.champsimtrace.xz
+605.mcf_s-1644B.champsimtrace.xz
+605.mcf_s-472B.champsimtrace.xz
+605.mcf_s-484B.champsimtrace.xz
+605.mcf_s-665B.champsimtrace.xz
+605.mcf_s-782B.champsimtrace.xz
+605.mcf_s-994B.champsimtrace.xz
+
+"

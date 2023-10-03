@@ -117,17 +117,27 @@ bool CACHE::handle_fill(const PACKET& fill_mshr)
 
       metadata_thru =
           impl_prefetcher_cache_fill(pkt_address, get_set_index(fill_mshr.address), way_idx, fill_mshr.type == PREFETCH, evicting_address, metadata_thru);
-#if defined XDIP_REPLACEMENT_POLICY
+#if defined ENABLE_TRANSLATION_AWARE_REPLACEMENT
+/*
 			if (NAME.compare("cpu0_STLB") == 0)
-      	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, evicting_address, (uint32_t)(fill_mshr.is_instr?1:0),
+      	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, evicting_address, fill_mshr.type, false, (uint32_t)(fill_mshr.is_instr?1:0),
                                     false);
-			else if (NAME.compare("cpu0_L1D") == 0) {
-			 	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, evicting_address, (uint32_t)(fill_mshr.is_instr?1:0),
+			else if (NAME.compare("cpu0_L1D") == 0 || NAME.compare("cpu0_L2C") || NAME.compare("LLC")) {
+			 	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, evicting_address, fill_mshr.type, false, (uint32_t)(fill_mshr.is_instr?1:0),
                                     (fill_mshr.is_pte?1:0));
 			}
 			else 
       	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, evicting_address, fill_mshr.type,
-                                    false);
+                                    false, false, false);
+*/
+			REP_POL_XARGS xargs;
+			xargs.is_instr = fill_mshr.is_instr;
+			xargs.is_pte = fill_mshr.is_pte;
+			xargs.is_replay = !fill_mshr.is_translated;
+			xargs.translation_level = fill_mshr.translation_level;
+			impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, 
+																		fill_mshr.address, fill_mshr.ip, evicting_address, 
+																		fill_mshr.type, false, xargs);
 #else
       impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, evicting_address, fill_mshr.type,
                                     false);
@@ -140,21 +150,50 @@ bool CACHE::handle_fill(const PACKET& fill_mshr)
     assert(fill_mshr.type != WRITE);
 
     metadata_thru = impl_prefetcher_cache_fill(pkt_address, get_set_index(fill_mshr.address), way_idx, fill_mshr.type == PREFETCH, 0, metadata_thru);
-#if defined XDIP_REPLACEMENT_POLICY
+
+#if defined ENABLE_TRANSLATION_AWARE_REPLACEMENT
+/*
 			if (NAME.compare("cpu0_STLB") == 0)
-      	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, 0, (uint32_t)(fill_mshr.is_instr?1:0), false);
-			else if (NAME.compare("cpu0_L1D") == 0) {
-			 	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, 0, (uint32_t)(fill_mshr.is_instr?1:0),
+      	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, 0, fill_mshr.type, false, (uint32_t)(fill_mshr.is_instr?1:0), false);
+			else if (NAME.compare("cpu0_L1D") == 0 || NAME.compare("cpu0_L2C") || NAME.compare("LLC")) {
+			 	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, 0, fill_mshr.type, false, (uint32_t)(fill_mshr.is_instr?1:0),
                                     (fill_mshr.is_pte?1:0));
 			}
 			else 
-      	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, 0, fill_mshr.type, false);
+      	impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, 0, fill_mshr.type, false, false, false);
+*/
+		REP_POL_XARGS xargs;
+		xargs.is_instr = fill_mshr.is_instr;
+		xargs.is_pte = fill_mshr.is_pte;
+		xargs.is_replay = !fill_mshr.is_translated;
+		xargs.translation_level = fill_mshr.translation_level;
+		impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, 
+																	fill_mshr.address, fill_mshr.ip, 0, 
+																	fill_mshr.type, false, xargs);
 #else
     impl_update_replacement_state(fill_mshr.cpu, get_set_index(fill_mshr.address), way_idx, fill_mshr.address, fill_mshr.ip, 0, fill_mshr.type, false);
 #endif
   }
 
   if (success) {
+#if defined ENABLE_EXTRA_CACHE_STATS
+		if (fill_mshr.is_instr && !fill_mshr.is_pte) {
+    	sim_stats.back().total_imiss_latency += current_cycle - (fill_mshr.cycle_enqueued + 1);
+		} else if (!fill_mshr.is_instr && !fill_mshr.is_pte) {
+    	sim_stats.back().total_dmiss_latency += current_cycle - (fill_mshr.cycle_enqueued + 1);
+		} else if (fill_mshr.is_instr && fill_mshr.is_pte) {
+    	sim_stats.back().total_itmiss_latency += current_cycle - (fill_mshr.cycle_enqueued + 1);
+		} else if (!fill_mshr.is_instr && fill_mshr.is_pte) {
+    	sim_stats.back().total_dtmiss_latency += current_cycle - (fill_mshr.cycle_enqueued + 1);
+		} else {
+			//sim_stats.back().ihits[handle_pkt.type][handle_pkt.cpu]++;
+			std::cout << "Oups, something went wrong..." << std::endl;
+			std::cout << "\ttype:" << (uint32_t)fill_mshr.type << std::endl;
+			std::cout << "\tis_instr:" << (fill_mshr.is_instr?"true":"false") << std::endl;
+			assert(false);
+		}
+#endif
+
     // COLLECT STATS
     sim_stats.back().total_miss_latency += current_cycle - (fill_mshr.cycle_enqueued + 1);
 
@@ -213,15 +252,31 @@ bool CACHE::try_hit(const PACKET& handle_pkt)
 			std::cout << "\tis_instr:" << (handle_pkt.is_instr?"true":"false") << std::endl;
 			assert(false);
 		}
+
+		recallDistMon->add_access(handle_pkt.address);
 #endif
 
     // update replacement policy
     const auto way_idx = static_cast<std::size_t>(std::distance(set_begin, way)); // cast protected by earlier assertion
-#if defined XDIP_REPLACEMENT_POLICY
+#if defined ENABLE_TRANSLATION_AWARE_REPLACEMENT
+/*
 		if (NAME.compare("cpu0_STLB") == 0)
-      impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, way->address, handle_pkt.ip, 0, (uint32_t)(handle_pkt.is_instr?1:0), true);
+      impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, way->address, handle_pkt.ip, 0, handle_pkt.type, true, (uint32_t)(handle_pkt.is_instr?1:0), true);
+		else if (NAME.compare("cpu0_L1D") == 0 || NAME.compare("cpu0_L2C") || NAME.compare("LLC")) {
+			impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, way->address, handle_pkt.ip, 0, handle_pkt.type, true, (uint32_t)(handle_pkt.is_instr?1:0),
+                                    (handle_pkt.is_pte?1:0));
+		}
 		else 
-    	impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, way->address, handle_pkt.ip, 0, handle_pkt.type, true);
+    	impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, way->address, handle_pkt.ip, 0, handle_pkt.type, true, false, false);
+*/
+		REP_POL_XARGS xargs;
+		xargs.is_instr = handle_pkt.is_instr;
+		xargs.is_pte = handle_pkt.is_pte;
+		xargs.is_replay = !handle_pkt.is_translated;
+		xargs.translation_level = handle_pkt.translation_level;
+		impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, 
+																	handle_pkt.address, handle_pkt.ip, 0, 
+																	handle_pkt.type, false, xargs);
 #else
     impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, way->address, handle_pkt.ip, 0, handle_pkt.type, true);
 #endif
@@ -294,6 +349,8 @@ bool CACHE::try_hit(const PACKET& handle_pkt)
 				std::cout << "\tis_instr:" << (handle_pkt.is_instr?"true":"false") << std::endl;
 				assert(false);
 			}
+		
+			recallDistMon->add_access(handle_pkt.address);
 #endif
 
 			copy.pf_metadata = metadata_thru;
@@ -316,6 +373,17 @@ bool CACHE::try_hit(const PACKET& handle_pkt)
 
     sim_stats.back().misses[handle_pkt.type][handle_pkt.cpu]++;
 
+#if defined PTP_REPLACEMENT_POLICY
+		if (NAME.compare("cpu0_STLB") == 0) {
+			uint32_t total_accesses = sim_stats.back().misses[handle_pkt.type][handle_pkt.cpu] + sim_stats.back().hits[handle_pkt.type][handle_pkt.cpu];
+			uint32_t total_misses = sim_stats.back().misses[handle_pkt.type][handle_pkt.cpu];
+			double miss_ratio  = static_cast<double>(total_misses) / static_cast<double>(total_accesses);
+			//TODO: add a polling mechanism, to avoid running this every time
+			vmem->STLB_MISS_RATE = std::round( (100*miss_ratio) * 0.5f ) * 2;
+			//std::cout << "STLB_MISS_RATE:" << vmem->STLB_MISS_RATE << std::endl; 
+		}
+#endif
+
 #if defined ENABLE_EXTRA_CACHE_STATS
 		if (handle_pkt.is_instr && !handle_pkt.is_pte) {
 			sim_stats.back().imisses[handle_pkt.type][handle_pkt.cpu]++;
@@ -331,6 +399,8 @@ bool CACHE::try_hit(const PACKET& handle_pkt)
 			std::cout << "\tis_instr:" << (handle_pkt.is_instr?"true":"false") << std::endl;
 			assert(false);
 		}
+		
+		recallDistMon->add_access(handle_pkt.address);
 #endif
 
   }
@@ -703,6 +773,11 @@ void CACHE::end_phase(unsigned finished_cpu)
     roi_stats.back().itmisses.at(type).at(finished_cpu) = sim_stats.back().itmisses.at(type).at(finished_cpu);
 		roi_stats.back().dthits.at(type).at(finished_cpu) = sim_stats.back().dthits.at(type).at(finished_cpu);
     roi_stats.back().dtmisses.at(type).at(finished_cpu) = sim_stats.back().dtmisses.at(type).at(finished_cpu);
+
+		roi_stats.back().total_imiss_latency = sim_stats.back().total_imiss_latency;
+		roi_stats.back().total_dmiss_latency = sim_stats.back().total_dmiss_latency;
+		roi_stats.back().total_itmiss_latency = sim_stats.back().total_itmiss_latency;
+		roi_stats.back().total_dtmiss_latency = sim_stats.back().total_dtmiss_latency;
 #endif
   }
 

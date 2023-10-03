@@ -18,6 +18,8 @@ elif [ "${BENCHSUITE}" == "top10_qualcom_srv"  ]; then
 			TRACES="${TOP_QUALCOM_SRV}"
 elif [ "${BENCHSUITE}" == "smt_qualcom_srv"  ]; then
 			TRACES="${SMT_QUALCOM_SRV}"
+elif [ "${BENCHSUITE}" == "qualcom_server" ]; then
+			TRACES="${IPC_QUALCOM_SERVER}"
 elif [ "${BENCHSUITE}" == "top10_smt_qualcom_srv"  ]; then
 			TRACES="${TOP10_SMT_QUALCOM_SRV}"
 elif [ "${BENCHSUITE}" == "cloudsuite"  ]; then
@@ -26,9 +28,12 @@ elif [ "${BENCHSUITE}" == "gap" ]; then
 			TRACES="${GAP}"
 elif [ "${BENCHSUITE}" == "spec" ]; then
 			TRACES="${SPEC_CPU_2006} ${SPEC_CPU_2017}"
+elif [ "${BENCHSUITE}" == "spec_mem" ]; then
+			TRACES="${SPEC_MEM_2017}"
 elif [ "${BENCHSUITE}" == "test" ]; then 
 			#TRACES="srv_408.champsimtrace.xz"
 			TRACES="smt_srv_12_srv_99_1024i.champsimtrace.xz"
+			#TRACES="smt_srv_s60_srv_s61_1024i.champsimtrace.xz"
 fi
 
 for trace in $TRACES; do

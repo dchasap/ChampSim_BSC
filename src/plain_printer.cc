@@ -131,7 +131,15 @@ void champsim::plain_printer::print(CACHE::stats_type stats)
     stream << "USEFUL: " << std::setw(10) << stats.pf_useful << "  ";
     stream << "USELESS: " << std::setw(10) << stats.pf_useless << std::endl;
 
+#if defined ENABLE_EXTRA_CACHE_STATS
+    stream << stats.name << " AVERAGE iMISS LATENCY: " << std::ceil(stats.total_imiss_latency) / std::ceil(TOTAL_MISS) << " cycles" << std::endl;
+    stream << stats.name << " AVERAGE dMISS LATENCY: " << std::ceil(stats.total_dmiss_latency) / std::ceil(TOTAL_MISS) << " cycles" << std::endl;
+    stream << stats.name << " AVERAGE itMISS LATENCY: " << std::ceil(stats.total_itmiss_latency) / std::ceil(TOTAL_MISS) << " cycles" << std::endl;
+    stream << stats.name << " AVERAGE dtMISS LATENCY: " << std::ceil(stats.total_dtmiss_latency) / std::ceil(TOTAL_MISS) << " cycles" << std::endl;
+#endif
+
     stream << stats.name << " AVERAGE MISS LATENCY: " << std::ceil(stats.total_miss_latency) / std::ceil(TOTAL_MISS) << " cycles" << std::endl;
+
     // stream << " AVERAGE MISS LATENCY: " << (stats.total_miss_latency)/TOTAL_MISS << " cycles " << stats.total_miss_latency << "/" << TOTAL_MISS<< std::endl;
   }
 }
@@ -181,6 +189,12 @@ void champsim::plain_printer::print(champsim::phase_stats& stats)
   for (const auto& stat : stats.roi_cache_stats)
     print(stat);
 
+#if defined ENABLE_PTW_STATS
+	stream << std::endl;
+	for (const auto& stat : stats.roi_ptw_stats)
+		print(stat);
+#endif
+
   stream << std::endl;
   stream << "DRAM Statistics" << std::endl;
   for (const auto& stat : stats.roi_dram_stats)
@@ -192,3 +206,20 @@ void champsim::plain_printer::print(std::vector<phase_stats>& stats)
   for (auto p : stats)
     print(p);
 }
+
+#if defined ENABLE_PTW_STATS
+void champsim::plain_printer::print(PageTableWalker::stats_type stats) 
+{
+  for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu) {
+
+    stream << stats.name << " TOTAL       ";;
+    stream << "ACCESS: " << std::setw(10) << stats.total_reads << "  ";
+		stream << std::endl;
+
+    stream << stats.name << " AVERAGE LATENCY: " << std::ceil(stats.total_miss_latency) / std::ceil(stats.total_reads) << " cycles" << std::endl;
+    stream << stats.name << " TOTAL LATENCY: " << stats.total_miss_latency << " cycles" << std::endl;
+  }
+
+}
+#endif
+

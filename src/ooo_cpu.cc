@@ -31,6 +31,37 @@ constexpr uint64_t DEADLOCK_CYCLE = 1000000;
 
 std::tuple<uint64_t, uint64_t, uint64_t> elapsed_time();
 
+#if defined TRACK_BRANCH_HISTORY
+
+uint64_t global_path_history_MHRP = 0;
+uint64_t global_path_history = 0;
+uint64_t uncondIndHistory = 0;
+uint64_t condHistory = 0;
+uint64_t uncondIndHistory_old = 0;
+uint64_t condHistory_old = 0;
+
+int folding_factor=2;
+int glob_shifts_main = 4;
+int globe_bits_mask_main = 3;
+
+void update_history(uint64_t pc, uint64_t& hist) {
+	hist <<= 8;
+	uint64_t brh = hist;
+	hist = (brh | ((pc >> 2) & ((1 << 8) - 1)));
+}
+#endif 
+
+void update_path_history(uint64_t pc) {
+	uint64_t gph;
+	global_path_history <<= glob_shifts_main;
+	gph = global_path_history;
+	global_path_history = (gph | (((pc) & 7)));
+	global_path_history_MHRP <<= glob_shifts_main;
+	gph = global_path_history_MHRP;
+	global_path_history_MHRP = (gph | (((pc >> folding_factor) & globe_bits_mask_main)));
+}
+
+
 void O3_CPU::operate()
 {
   retire_rob();                    // retire
@@ -192,6 +223,19 @@ bool O3_CPU::do_init_instruction(ooo_model_instr& arch_instr)
     arch_instr.source_registers.clear();
     arch_instr.destination_registers.clear();
   }
+
+#ifdef TRACK_BRANCH_HISTORY
+	if (arch_instr.is_branch) {
+		if (arch_instr.branch_type == BRANCH_INDIRECT) {
+			update_history(arch_instr.ip, uncondIndHistory);
+		} else if (arch_instr.branch_type == BRANCH_CONDITIONAL) {
+			update_history(arch_instr.ip, condHistory);
+		}
+	}
+	update_path_history(arch_instr.ip);
+	uncondIndHistory_old = uncondIndHistory;
+	condHistory_old = condHistory;
+#endif
 
   ::do_stack_pointer_folding(arch_instr);
   return do_predict_branch(arch_instr);

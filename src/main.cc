@@ -49,9 +49,17 @@ void signal_handler(int signal)
   abort();
 }
 
+#if defined ENABLE_PTW_STATS
+template <typename CPU, typename C, typename D, typename P>
+std::vector<champsim::phase_stats> zip_phase_stats(const std::vector<champsim::phase_info>& phases, 
+																									 const std::vector<CPU>& cpus,
+                                                   const std::vector<C>& cache_list, 
+																									 const D& dram, const P& ptw_list)
+#else
 template <typename CPU, typename C, typename D>
 std::vector<champsim::phase_stats> zip_phase_stats(const std::vector<champsim::phase_info>& phases, const std::vector<CPU>& cpus,
                                                    const std::vector<C>& cache_list, const D& dram)
+#endif
 {
   std::vector<champsim::phase_stats> retval;
 
@@ -73,6 +81,10 @@ std::vector<champsim::phase_stats> zip_phase_stats(const std::vector<champsim::p
       std::transform(std::begin(dram.channels), std::end(dram.channels), std::back_inserter(stats.roi_dram_stats),
                      [i](const DRAM_CHANNEL& chan) { return chan.roi_stats.at(i); });
 
+#if defined ENABLE_PTW_STATS
+      std::transform(std::begin(ptw_list), std::end(ptw_list), std::back_inserter(stats.roi_ptw_stats),
+                     [i](const PageTableWalker& ptw) { return ptw.roi_stats.at(i); });
+#endif
       retval.push_back(stats);
     }
   }
@@ -154,10 +166,20 @@ int main(int argc, char** argv)
   std::cout << "ChampSim completed all CPUs" << std::endl;
   std::cout << std::endl;
 
+#if defined ENABLE_PTW_STATS
+  auto phase_stats = zip_phase_stats(phases, ooo_cpu, caches, DRAM, ptws);
+#else
   auto phase_stats = zip_phase_stats(phases, ooo_cpu, caches, DRAM);
-
+#endif
   champsim::plain_printer default_print{std::cout};
   default_print.print(phase_stats);
+
+#if defined ENABLE_EXTRA_CACHE_STATS
+  for (CACHE& cache : caches) {
+    cache.recallDistMon->dump();
+		delete cache.recallDistMon;
+	}
+#endif
 
   for (CACHE& cache : caches)
     cache.impl_prefetcher_final_stats();

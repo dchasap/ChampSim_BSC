@@ -41,8 +41,10 @@ void CACHE::initialize_replacement()
 }
 
 // called on every cache hit and cache fill
-void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type,
-                                     uint8_t hit)
+void CACHE::update_replacement_state(	uint32_t triggering_cpu, uint32_t set, uint32_t way, 
+																			uint64_t full_addr, uint64_t ip, 
+																			uint64_t victim_addr, uint32_t type,
+                                    	uint8_t hit, REP_POL_XARGS xargs)
 {
   // do not update replacement state for writebacks
   if (type == WRITE) {

@@ -20,9 +20,15 @@
 #include <cstdint>
 #include <exception>
 
+#define ENABLE_EXTRA_CPU_STATS
 #define ENABLE_EXTRA_CACHE_STATS
+#define ENABLE_PTW_STATS
 #define FORCE_HIT
-#define XDIP_REPLACEMENT_POLICY
+//#define XDIP_REPLACEMENT_POLICY
+#define PTP_REPLACEMENT_POLICY
+#define ENABLE_TRANSLATION_AWARE_REPLACEMENT
+
+#define TRACK_BRANCH_HISTORY // needed for 
 
 namespace champsim
 {
@@ -36,7 +42,6 @@ constexpr bool debug_print = true;
 #else
 constexpr bool debug_print = false;
 #endif
-
 } // namespace champsim
 
 #endif

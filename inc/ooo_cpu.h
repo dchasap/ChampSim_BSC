@@ -33,6 +33,7 @@
 #include "operable.h"
 #include "util.h"
 
+
 enum STATUS { INFLIGHT = 1, COMPLETED = 2 };
 
 class CacheBus : public MemoryRequestProducer
@@ -138,7 +139,11 @@ public:
   std::deque<ooo_model_instr> input_queue;
 
   CacheBus L1I_bus, L1D_bus;
-
+/*
+#if defined TRACK_BRANCH_HISTORY 
+	historyTracker *histTracker;
+#endif	
+*/
   void initialize() override final;
   void operate() override final;
   void begin_phase() override final;

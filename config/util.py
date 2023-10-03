@@ -34,14 +34,10 @@ def wrap_list(attr):
 def chain(*dicts):
     def merge_dicts(x,y):
         dict_merges = {k:merge_dicts(v, y[k]) for k,v in x.items() if isinstance(v, dict) and isinstance(y.get(k), dict)}
-        list_merges = {k:(v + y[k]) for k,v in x.items() if isinstance(v, list) and isinstance(y.get(k), list)}
-        return dict(itertools.chain(y.items(), x.items(), dict_merges.items(), list_merges.items()))
+        list_merges = {k:[*v, *y[k]] for k,v in x.items() if isinstance(v, list) and isinstance(y.get(k), list)}
+        return { **y, **x, **dict_merges, **list_merges }
 
     return functools.reduce(merge_dicts, dicts)
-
-def extend_each(x,y):
-    merges = {k: (*x[k],*y[k]) for k in x if k in y}
-    return {**x, **y, **merges}
 
 def subdict(d, keys):
     return {k:v for k,v in d.items() if k in keys}
@@ -50,11 +46,4 @@ def combine_named(*iterables):
     iterable = sorted(itertools.chain(*iterables), key=operator.itemgetter('name'))
     iterable = itertools.groupby(iterable, key=operator.itemgetter('name'))
     return {kv[0]: chain(*kv[1]) for kv in iterable}
-
-# Assign defaults that are unique per core
-def upper_levels_for(system, name, key='lower_level'):
-    finder = lambda x: x.get(key, '')
-    upper_levels = sorted(system, key=finder)
-    upper_levels = itertools.groupby(upper_levels, key=finder)
-    return next(filter(lambda kv: kv[0] == name, upper_levels))[1]
 

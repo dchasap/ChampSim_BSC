@@ -30,8 +30,9 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 }
 
 // called on every cache hit and cache fill
-void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type,
-                                     uint8_t hit)
+void CACHE::update_replacement_state(	uint32_t triggering_cpu, uint32_t set, uint32_t way, 
+																			uint64_t full_addr, uint64_t ip, uint64_t victim_addr, 
+																			uint32_t type, uint8_t hit, REP_POL_XARGS xargs)
 {
   if (hit)
     ::rrpv_values[this][set * NUM_WAY + way] = 0;

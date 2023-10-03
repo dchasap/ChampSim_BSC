@@ -29,6 +29,15 @@
 
 #define FORCE_HIT
 
+#if defined ENABLE_PTW_STATS
+struct ptw_stats {
+	std::string name;
+  
+	uint64_t total_reads = 0;
+	uint64_t total_miss_latency = 0;
+};
+#endif
+
 class PageTableWalker : public champsim::operable, public MemoryRequestConsumer, public MemoryRequestProducer
 {
   struct pscl_entry {
@@ -52,6 +61,13 @@ public:
 
   std::deque<PACKET> RQ;
   std::deque<PACKET> MSHR;
+
+#if defined ENABLE_PTW_STATS 
+  using stats_type = ptw_stats;
+	std::vector<stats_type> roi_stats{}, sim_stats{};
+  void begin_phase() override final;
+  void end_phase(unsigned cpu) override final;
+#endif
 
   uint64_t total_miss_latency = 0;
 

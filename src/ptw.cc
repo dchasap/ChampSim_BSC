@@ -59,6 +59,10 @@ bool PageTableWalker::handle_read(const PACKET& handle_pkt)
   packet.init_translation_level = walk_init.level;
   packet.cycle_enqueued = current_cycle;
 
+#if defined ENABLE_PTW_STATS
+	sim_stats.back().total_reads++;
+#endif
+
   return step_translation(champsim::splice_bits(walk_init.ptw_addr, walk_offset, LOG2_PAGE_SIZE), packet.init_translation_level, packet);
 }
 
@@ -82,6 +86,11 @@ bool PageTableWalker::handle_fill(const PACKET& fill_mshr)
       ret->return_data(ret_pkt);
 
     total_miss_latency += current_cycle - ret_pkt.cycle_enqueued;
+
+#if defined ENABLE_PTW_STATS
+		sim_stats.back().total_miss_latency = total_miss_latency;
+#endif
+
     return true;
   } else {
     const auto pscl_idx = std::size(pscl) - fill_mshr.translation_level;
@@ -116,7 +125,7 @@ bool PageTableWalker::step_translation(uint64_t addr, std::size_t transl_level, 
     fwd_pkt.to_return = source.to_return; // Set the return for MSHR packet same as read packet.
     fwd_pkt.type = source.type;
     fwd_pkt.event_cycle = std::numeric_limits<uint64_t>::max();
-#if defined ENABLE_EXTRA_CACHE_STATS || defined FORCE_HIT
+#if defined ENABLE_EXTRA_CACHE_STATS || defined FORCE_HIT || defined ENABLE_TRANSLATION_AWARE_REPLACEMENT
 		fwd_pkt.is_pte = false;
 #endif
     MSHR.push_back(fwd_pkt);
@@ -219,3 +228,20 @@ void PageTableWalker::print_deadlock()
     std::cout << NAME << " MSHR empty" << std::endl;
   }
 }
+
+void PageTableWalker::begin_phase()
+{
+  roi_stats.emplace_back();
+  sim_stats.emplace_back();
+
+  roi_stats.back().name = "PageTableWalker";
+  sim_stats.back().name = "PageTableWalker";
+}
+
+void PageTableWalker::end_phase(unsigned finished_cpu)
+{
+	if (finished_cpu == 0)
+  	roi_stats.push_back(sim_stats.back());
+}
+
+

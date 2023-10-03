@@ -49,6 +49,10 @@ public:
   const std::size_t pt_levels;
   const uint64_t pte_page_size; // Size of a PTE page
 
+#if defined PTP_REPLACEMENT_POLICY
+	uint64_t STLB_MISS_RATE;
+#endif
+
   // capacity and pg_size are measured in bytes, and capacity must be a multiple of pg_size
   VirtualMemory(uint64_t pg_size, std::size_t page_table_levels, uint64_t minor_penalty, MEMORY_CONTROLLER& dram);
   uint64_t shamt(std::size_t level) const;

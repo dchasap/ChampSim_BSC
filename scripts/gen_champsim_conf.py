@@ -43,6 +43,73 @@ if len(sys.argv) >= 2:
 
 	config = load_config(sys.argv[1])
 
+	# create random config
+	new_config = create_copy(config)
+	label = 'l1d-rand'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L1D', 'replacement', 'random')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-ship_llc-drrip config
+	new_config = create_copy(config)
+	label = 'l2c-srrip_llc-ship'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'srrip')
+	set_entry(new_config, 'LLC', 'replacement', 'ship')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-drrip config
+	new_config = create_copy(config)
+	label = 'l2c-srrip'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'srrip')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create llc-ship config
+	new_config = create_copy(config)
+	label = 'llc-ship'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'LLC', 'replacement', 'ship')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-ship_llc-drrip config
+	new_config = create_copy(config)
+	label = 'l2c-drrip_llc-ship'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'drrip')
+	set_entry(new_config, 'LLC', 'replacement', 'ship')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-drrip config
+	new_config = create_copy(config)
+	label = 'l2c-drrip'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'drrip')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create llc-mockingjay config
+	new_config = create_copy(config)
+	label = 'llc-mockingjay'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'LLC', 'replacement', 'mockingjay')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create stlb-chirp config
+	new_config = create_copy(config)
+	label = 'stlb-chirp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'chirp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+
 	# create huge-stlb config
 	new_config = create_copy(config)
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_huge-stlb')
@@ -80,113 +147,233 @@ if len(sys.argv) >= 2:
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_perfect-istlb-dtl1d.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_perfect-istlb-dtl1d.json')	
 
-	# create xdip config
+	# create itp config
 	new_config = create_copy(config)
-	label = 'stlb-xdip'
+	label = 'stlb-itp'
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
-	set_entry(new_config, 'STLB', 'replacement', 'xdip')
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
-	# create stlb-xdip_perfect-dtl1d config
+	# create stlb-itp_perfect-dtl1d config
 	new_config = create_copy(config)
-	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_stlb-xdip_perfect-dtl1d')
-	set_entry(new_config, 'STLB', 'replacement', 'xdip')
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_stlb-itp_perfect-dtl1d')
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
 	set_entry(new_config, 'L1D', 'force_hit', True)
-	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_stlb-xdip_perfect-dtl1d.json')
-	print("Generated sim_conf/champsim_" + conf_tag + '_stlb-xdip_perfect-dtl1d.json')	
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_stlb-itp_perfect-dtl1d.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_stlb-itp_perfect-dtl1d.json')	
 
-	# create xxxdip config
+	# create l1d-dptp config
 	new_config = create_copy(config)
-	label = 'stlb-xxxdip'
+	label = 'l1d-dptp'
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
-	set_entry(new_config, 'STLB', 'replacement', 'xxxdip')
+	set_entry(new_config, 'L1D', 'replacement', 'dptp')
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
-	# create xxxdip config
+	# create stlb-ipt_l1d-dptp config
 	new_config = create_copy(config)
-	label = 'stlb-xxxdip_perfect-dtl1d'
+	label = 'stlb-itp_l1d-dptp'
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
-	set_entry(new_config, 'STLB', 'replacement', 'xxxdip')
-	set_entry(new_config, 'L1D', 'force_hit', True)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'dptp')
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
-	# create xxxdip config
+	# create l2c-dptp config
 	new_config = create_copy(config)
-	label = 'stlb-xdip_l1d-keepDT'
+	label = 'l2c-dptp'
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
-	set_entry(new_config, 'STLB', 'replacement', 'xdip')
-	set_entry(new_config, 'L1D', 'replacement', 'lru_ptp')
+	set_entry(new_config, 'L2C', 'replacement', 'dptp')
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
-	# create xxxdip config
+
+	# create stlb-itp_l2c-dptp config
 	new_config = create_copy(config)
-	label = 'l1d-keepDT'
+	label = 'stlb-itp_l2c-dptp'
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
-	set_entry(new_config, 'L1D', 'replacement', 'lru_ptp')
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L2C', 'replacement', 'dptp')
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
-	# create lru_orig config
+	# create stlb-itp_l1d-dptp_l2c-dptp config
 	new_config = create_copy(config)
-	label = 'lru_orig'
+	label = 'stlb-itp_l1d-dptp_l2c-dptp'
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
-	set_entry(new_config, 'L1D', 'replacement', 'lru_orig')
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'dptp')
+	set_entry(new_config, 'L2C', 'replacement', 'dptp')
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
-	# create lru_orig config
+	# create stlb-itp_l2c-dptp_llc-dptp config
 	new_config = create_copy(config)
-	label = 'lru'
+	label = 'stlb-itp_l2c-dptp_llc-dptp'
 	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
-	set_entry(new_config, 'L1D', 'replacement', 'lru')
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L2C', 'replacement', 'dptp')
+	set_entry(new_config, 'LLC', 'replacement', 'dptp')
 	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
 	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
+	# create stlb-itp_l1d-dptp_l2c-dptp_llc-dptp config
+	new_config = create_copy(config)
+	label = 'stlb-itp_l1d-dptp_l2c-dptp_llc-dptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'dptp')
+	set_entry(new_config, 'L2C', 'replacement', 'dptp')
+	set_entry(new_config, 'LLC', 'replacement', 'dptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l1d-xptp config
+	new_config = create_copy(config)
+	label = 'l1d-xptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L1D', 'replacement', 'xptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-xptp config
+	new_config = create_copy(config)
+	label = 'l2c-xptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'xptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create stlb-itp_l1d-xptp config
+	new_config = create_copy(config)
+	label = 'stlb-itp_l1d-xptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'xptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create stlb-itp_l2c-xptp config
+	new_config = create_copy(config)
+	label = 'stlb-itp_l2c-xptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L2C', 'replacement', 'xptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-xptp_llc-xptp config
+	new_config = create_copy(config)
+	label = 'l2c-xptp_llc-xptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'xptp')
+	set_entry(new_config, 'LLC', 'replacement', 'xptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create stlb-itp_l1d-dptp_l2c-xptp config
+	new_config = create_copy(config)
+	label = 'stlb-itp_l1d-dptp_l2c-xptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'dptp')
+	set_entry(new_config, 'L2C', 'replacement', 'xptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create stlb-itp_l1d-xptp_l2c-xptp config
+	new_config = create_copy(config)
+	label = 'stlb-itp_l1d-xptp_l2c-xptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'xptp')
+	set_entry(new_config, 'L2C', 'replacement', 'xptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-ptp_llc-ptp config
+	new_config = create_copy(config)
+	label = 'l2c-ptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'ptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create llc-ptp config
+	new_config = create_copy(config)
+	label = 'llc-ptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'LLC', 'replacement', 'ptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-ptp_llc-ptp config
+	new_config = create_copy(config)
+	label = 'l2c-ptp_llc-ptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 'ptp')
+	set_entry(new_config, 'LLC', 'replacement', 'ptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+# create stlb-itp_l2c-ptp config
+	new_config = create_copy(config)
+	label = 'stlb-itp_l2c-ptp'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L2C', 'replacement', 'ptp')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create stlb-itp_l1d-xptp_l2c-xptp config
+	new_config = create_copy(config)
+	label = 'stlb-itp_l1d-dptp_l2c-xptp_llc-ship'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'dptp')
+	set_entry(new_config, 'L2C', 'replacement', 'xptp')
+	set_entry(new_config, 'LLC', 'replacement', 'ship')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create l2c-tddrip config
+	new_config = create_copy(config)
+	label = 'l2c-tdrrip'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 't-drrip')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create llc-tship config
+	new_config = create_copy(config)
+	label = 'llc-tship'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'LLC', 'replacement', 't-ship')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+
+	# create l2c-tdrrip_llc-tship config
+	new_config = create_copy(config)
+	label = 'l2c-tdrrip_llc-tship'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'L2C', 'replacement', 't-drrip')
+	set_entry(new_config, 'LLC', 'replacement', 't-ship')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
+
+	# create stlb-itp_l1d-dptp_l2c-xptp_llc-ship
+	new_config = create_copy(config)
+	label = 'stlb-itp_l1d-dptp_l2c-xptp_llc-ship'
+	set_entry(new_config, None, 'executable_name', 'champsim_' + conf_tag + '_' + label)
+	set_entry(new_config, 'STLB', 'replacement', 'itp')
+	set_entry(new_config, 'L1D', 'replacement', 'dptp')
+	set_entry(new_config, 'L2C', 'replacement', 'xptp')
+	set_entry(new_config, 'LLC', 'replacement', 't-ship')
+	save_config(new_config, 'sim_conf/champsim_' + conf_tag  +  '_' + label + '.json')
+	print("Generated sim_conf/champsim_" + conf_tag + '_' + label + '.json')	
 
 else:
 	print("Base configuration filename is required!")
 
-'''
-	# create perfect-itlb-only config
-	new_config = create_copy(config)
-	set_entry(new_config, None, 'executable_name', 'bin/champsim_' + conf_tag + '_perfect-itlb-only')
-	set_entry(new_config, 'ITLB', 'always_hit', True)
-	set_entry(new_config, 'ITLB', 'sets', 32)
-	save_config(new_config, 'conf/champsim_' + conf_tag  +  '_perfect-itlb-only.json')
-	print("Generated conf/champsim_" + conf_tag + '_perfect-itlb-only.json')	
-
-	# create itlb-only config
-	new_config = create_copy(config)
-	set_entry(new_config, None, 'executable_name', 'bin/champsim_' + conf_tag + '_itlb-only')
-	set_entry(new_config, 'ITLB', 'sets', 32)
-	save_config(new_config, 'conf/champsim_' + conf_tag  +  '_itlb-only.json')
-	print("Generated conf/champsim_" + conf_tag + '_itlb-only.json')	
-	
-# create itlb-only_perfect-dstlb config
-	new_config = create_copy(config)
-	set_entry(new_config, None, 'executable_name', 'bin/champsim_' + conf_tag + '_itlb-only_perfect-dstlb')
-	set_entry(new_config, 'STLB', 'always_hit', True)
-	set_entry(new_config, 'ITLB', 'sets', 32)
-	save_config(new_config, 'conf/champsim_' + conf_tag  +  '_itlb-only_perfect-dstlb.json')
-	print("Generated conf/champsim_" + conf_tag + '_itlb-only_perfect-dstlb.json')	
-
-
-	# create l1d-victim-dpte 
-	new_config = create_copy(config)
-	set_entry(new_config, None, 'executable_name', 'bin/champsim_' + conf_tag + '_l1d-victim-dpte')
-	set_entry(new_config, 'L1D', 'always_hit', True)
-	save_config(new_config, 'conf/champsim_' + conf_tag  +  '_l1d-victim-dpte.json')
-	print("Generated conf/champsim_" + conf_tag + '_l1d-victim-dpte.json')	
-	
-	# create stlb-xxxdip_l1d-victim-dpte 
-	new_config = create_copy(config)
-	set_entry(new_config, None, 'executable_name', 'bin/champsim_' + conf_tag + '_stlb-xxxdip_l1d-victim-dpte')
-	set_entry(new_config, 'L1D', 'always_hit', True)
-	set_entry(new_config, 'STLB', 'replacement', 'xxxdip')
-	save_config(new_config, 'conf/champsim_' + conf_tag  +  '_stlb-xxxdip_l1d-victim-dpte.json')
-	print("Generated conf/champsim_" + conf_tag + '_stlb-xxxdip_l1d-victim-dpte.json')	
-'''
