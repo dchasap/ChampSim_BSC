@@ -17,74 +17,85 @@
 #ifndef PTW_H
 #define PTW_H
 
-#include <list>
-#include <map>
-#include <optional>
+#include <cassert>
+#include <deque>
 #include <string>
 
-#include "delay_queue.hpp"
+#include "champsim.h"
 #include "memory_class.h"
 #include "operable.h"
+#include "util.h"
+#include "vmem.h"
 
-class PagingStructureCache
-{
-  struct block_t {
-    bool valid = false;
-    uint64_t address;
-    uint64_t data;
-    uint32_t lru = std::numeric_limits<uint32_t>::max() >> 1;
-  };
+#define FORCE_HIT
 
-  const std::string NAME;
-  const uint32_t NUM_SET, NUM_WAY;
-  std::vector<block_t> block{NUM_SET * NUM_WAY};
-
-public:
-  const std::size_t level;
-  PagingStructureCache(std::string v1, uint8_t v2, uint32_t v3, uint32_t v4) : NAME(v1), NUM_SET(v3), NUM_WAY(v4), level(v2) {}
-
-  std::optional<uint64_t> check_hit(uint64_t address);
-  void fill_cache(uint64_t next_level_paddr, uint64_t vaddr);
+#if defined ENABLE_PTW_STATS
+struct ptw_stats {
+	std::string name;
+  
+	uint64_t total_reads = 0;
+	uint64_t total_miss_latency = 0;
 };
+#endif
 
 class PageTableWalker : public champsim::operable, public MemoryRequestConsumer, public MemoryRequestProducer
 {
+  struct pscl_entry {
+    uint64_t vaddr;
+    uint64_t ptw_addr;
+    std::size_t level;
+  };
+
+  struct pscl_indexer {
+    std::size_t shamt;
+    auto operator()(const pscl_entry& entry) const { return entry.vaddr >> shamt; }
+  };
+
+  using pscl_type = champsim::lru_table<pscl_entry, pscl_indexer, pscl_indexer>;
+
 public:
   const std::string NAME;
-  const uint32_t cpu;
-  const uint32_t MSHR_SIZE, MAX_READ, MAX_FILL;
+  const uint32_t RQ_SIZE, MSHR_SIZE;
+  const long int MAX_READ, MAX_FILL;
+  const uint64_t HIT_LATENCY;
 
-  champsim::delay_queue<PACKET> RQ;
+  std::deque<PACKET> RQ;
+  std::deque<PACKET> MSHR;
 
-  std::list<PACKET> MSHR;
+#if defined ENABLE_PTW_STATS 
+  using stats_type = ptw_stats;
+	std::vector<stats_type> roi_stats{}, sim_stats{};
+  void begin_phase() override final;
+  void end_phase(unsigned cpu) override final;
+#endif
 
   uint64_t total_miss_latency = 0;
 
-  PagingStructureCache PSCL5, PSCL4, PSCL3, PSCL2;
+  std::vector<pscl_type> pscl;
+  VirtualMemory& vmem;
 
   const uint64_t CR3_addr;
-  std::map<std::pair<uint64_t, std::size_t>, uint64_t> page_table;
 
-  PageTableWalker(std::string v1, uint32_t cpu, unsigned fill_level, uint32_t v2, uint32_t v3, uint32_t v4, uint32_t v5, uint32_t v6, uint32_t v7, uint32_t v8,
-                  uint32_t v9, uint32_t v10, uint32_t v11, uint32_t v12, uint32_t v13, unsigned latency, MemoryRequestConsumer* ll);
+  PageTableWalker(std::string v1, uint32_t cpu, double freq_scale, std::vector<std::pair<std::size_t, std::size_t>> pscl_dims, uint32_t v10, uint32_t v11,
+                  uint32_t v12, uint32_t v13, uint64_t latency, MemoryRequestConsumer* ll, VirtualMemory& _vmem);
 
   // functions
-  int add_rq(PACKET* packet) override;
-  int add_wq(PACKET* packet) override { assert(0); }
-  int add_pq(PACKET* packet) override { assert(0); }
+  bool add_rq(const PACKET& packet) override final;
+  bool add_wq(const PACKET&) override final { assert(0); }
+  bool add_pq(const PACKET&) override final { assert(0); }
+  bool add_ptwq(const PACKET&) override final { assert(0); }
 
-  void return_data(PACKET* packet) override;
-  void operate() override;
+  void return_data(const PACKET& packet) override final;
+  void operate() override final;
 
-  void handle_read();
-  void handle_fill();
+  bool handle_read(const PACKET& pkt);
+  bool handle_fill(const PACKET& pkt);
+  bool step_translation(uint64_t addr, std::size_t transl_level, const PACKET& source);
 
-  uint32_t get_occupancy(uint8_t queue_type, uint64_t address) override;
-  uint32_t get_size(uint8_t queue_type, uint64_t address) override;
+  std::size_t get_occupancy(uint8_t queue_type, uint64_t address) override final;
+  std::size_t get_size(uint8_t queue_type, uint64_t address) override final;
 
-  uint64_t get_shamt(uint8_t pt_level);
-
-  void print_deadlock() override;
+  void print_deadlock() override final;
 };
 
 #endif

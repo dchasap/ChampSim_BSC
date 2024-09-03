@@ -17,39 +17,20 @@
 #ifndef CHAMPSIM_H
 #define CHAMPSIM_H
 
-#include <array>
 #include <cstdint>
 #include <exception>
-#include <iostream>
 
-#include "champsim_constants.h"
+//#define MULTIPLE_PAGE_SIZE
+#define ENABLE_EXTRA_CPU_STATS
+#define ENABLE_EXTRA_CACHE_STATS
+#define ENABLE_PTW_STATS
+#define FORCE_HIT
+//#define XDIP_REPLACEMENT_POLICY
+#define PTP_REPLACEMENT_POLICY
+#define ENABLE_TRANSLATION_AWARE_REPLACEMENT
+#define ENABLE_FDIP
 
-// USEFUL MACROS
-//#define DEBUG_PRINT
-#define SANITY_CHECK
-#define LLC_BYPASS
-#define DRC_BYPASS
-#define NO_CRC2_COMPILE
-
-#ifdef DEBUG_PRINT
-#define DP(x) x
-#else
-#define DP(x)
-#endif
-
-// CACHE
-#define INFLIGHT 1
-#define COMPLETED 2
-
-#define FILL_L1 1
-#define FILL_L2 2
-#define FILL_LLC 4
-#define FILL_DRC 8
-#define FILL_DRAM 16
-
-using namespace std;
-
-extern uint8_t warmup_complete[NUM_CPUS];
+#define TRACK_BRANCH_HISTORY // needed for chirp
 
 namespace champsim
 {
@@ -58,11 +39,11 @@ struct deadlock : public std::exception {
   explicit deadlock(uint32_t cpu) : which(cpu) {}
 };
 
-struct deprecated_clock_cycle {
-  uint64_t operator[](std::size_t cpu_idx);
-};
+#ifdef DEBUG_PRINT
+constexpr bool debug_print = true;
+#else
+constexpr bool debug_print = false;
+#endif
 } // namespace champsim
-
-extern champsim::deprecated_clock_cycle current_core_cycle;
 
 #endif

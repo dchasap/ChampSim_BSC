@@ -18,13 +18,21 @@
 #define TRACE_INSTRUCTION_H
 
 #include <limits>
+#include "champsim.h"
+
+
+// special registers that help us identify branches
+namespace champsim
+{
+constexpr char REG_STACK_POINTER = 6;
+constexpr char REG_FLAGS = 25;
+constexpr char REG_INSTRUCTION_POINTER = 26;
+} // namespace champsim
 
 // instruction format
 constexpr std::size_t NUM_INSTR_DESTINATIONS_SPARC = 4;
 constexpr std::size_t NUM_INSTR_DESTINATIONS = 2;
 constexpr std::size_t NUM_INSTR_SOURCES = 4;
-
-class LSQ_ENTRY;
 
 struct input_instr {
   // instruction pointer or PC (Program Counter)
@@ -40,6 +48,17 @@ struct input_instr {
   unsigned long long destination_memory[NUM_INSTR_DESTINATIONS] = {}; // output memory
   unsigned long long source_memory[NUM_INSTR_SOURCES] = {};           // input memory
 };
+
+#if defined(_MULTIPLE_PAGE_SIZE)
+struct page_size_info {
+	public:
+		uint64_t base_vpn_destination[NUM_INSTR_DESTINATIONS] = {};
+    uint64_t base_vpn_source[NUM_INSTR_SOURCES] = {};
+		//TODO: we could use a char for 1 byte to minimize outputfile size
+    uint8_t page_size_destination[NUM_INSTR_DESTINATIONS] = {};
+		uint8_t page_size_source[NUM_INSTR_SOURCES] = {};
+};
+#endif
 
 struct cloudsuite_instr {
   // instruction pointer or PC (Program Counter)
@@ -59,4 +78,3 @@ struct cloudsuite_instr {
 };
 
 #endif
-

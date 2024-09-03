@@ -18,32 +18,80 @@
 #define TRACEREADER_H
 
 #include <cstdio>
+#include <deque>
+#include <memory>
 #include <string>
+#include <variant>
+
+#if defined(__GNUG__) && !defined(__APPLE__)
+#include <ext/stdio_filebuf.h>
+#endif
+
+namespace detail
+{
+void pclose_file(FILE* f);
+}
 
 #include "instruction.h"
+#include "champsim.h"
 
 class tracereader
 {
-protected:
-  FILE* trace_file = NULL;
-  uint8_t cpu;
-  std::string cmd_fmtstr;
-  std::string decomp_program;
-  std::string trace_string;
+  static uint64_t instr_unique_id;
 
 public:
-  tracereader(const tracereader& other) = delete;
-  tracereader(uint8_t cpu, std::string _ts);
-  ~tracereader();
-  void open(std::string trace_string);
-  void close();
+  const std::string trace_string;
+#if defined(_MULTIPLE_PAGE_SIZE)
+	const std::string trace_ext_string;
+  tracereader(uint8_t cpu_idx, std::string _ts, std::string _txts) : 	trace_string(_ts), 
+																																			trace_ext_string(_txts),
+																																			cpu(cpu_idx) {}
+#else
+  tracereader(uint8_t cpu_idx, std::string _ts) : trace_string(_ts), cpu(cpu_idx) {}
+#endif
+  virtual ~tracereader() = default;
+
+  virtual ooo_model_instr operator()() = 0;
+  bool eof() const;
+
+protected:
+  static FILE* get_fptr(std::string fname);
+
+#if defined(__GNUG__) && !defined(__APPLE__)
+  std::unique_ptr<FILE, decltype(&detail::pclose_file)> fp{get_fptr(trace_string), &detail::pclose_file};
+  __gnu_cxx::stdio_filebuf<char> filebuf{fp.get(), std::ios::in};
+#if defined(_MULTIPLE_PAGE_SIZE)
+  std::unique_ptr<FILE, decltype(&detail::pclose_file)> ext_fp{get_fptr(trace_ext_string), &detail::pclose_file};
+  __gnu_cxx::stdio_filebuf<char> ext_filebuf{ext_fp.get(), std::ios::in};
+
+#endif
+#elif defined(__APPLE__)
+  FILE* fp = get_fptr(trace_string);
+#if defined(_MULTIPLE_PAGE_SIZE)
+	//NO MULTIPAGE SUPPORT FOR APPLE, sorry
+	assert(0);
+#endif
+#endif
+
+  uint8_t cpu;
+  bool eof_ = false;
+
+  constexpr static std::size_t buffer_size = 128;
+  constexpr static std::size_t refresh_thresh = 1;
+  std::deque<ooo_model_instr> instr_buffer;
 
   template <typename T>
-  ooo_model_instr read_single_instr();
+  void refresh_buffer();
 
-  virtual ooo_model_instr get() = 0;
+  template <typename T>
+  ooo_model_instr impl_get();
 };
 
-tracereader* get_tracereader(std::string fname, uint8_t cpu, bool is_cloudsuite);
+#if defined(_MULTIPLE_PAGE_SIZE)
+std::unique_ptr<tracereader> get_tracereader(	std::string fname, std::string ext_fname, 
+																							uint8_t cpu, bool is_cloudsuite);
+#else
+std::unique_ptr<tracereader> get_tracereader(std::string fname, uint8_t cpu, bool is_cloudsuite);
+#endif
 
 #endif
