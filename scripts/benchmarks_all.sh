@@ -75,7 +75,7 @@ elif [ "${BENCHSUITE}" == "test" ]; then
 			#TRACES="smt_srv85_ap_srv73_ap_1024i.champsimtrace.xz"
 			#TRACES="smt_srv12_ap_srv99_ap_1024i.champsimtrace.xz"
 			TRACES="srv12_ap.champsimtrace.xz"
-			TRACES_DIR="${QUALCOMM_SRV_AP_DIR}"
+			#TRACES_DIR="${QUALCOMM_SRV_AP_DIR}"
 			#TRACES="smt_srv_12_srv_99_1024i.champsimtrace.xz"
 			#TRACES="smt_srv_s60_srv_s61_1024i.champsimtrace.xz"
 fi

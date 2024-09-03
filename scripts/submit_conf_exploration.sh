@@ -18,8 +18,8 @@ for benchsuite in ${BENCHSUITES}; do
 		if ${BUILD_CHAMPSIM}; then
 
 			#./scripts/gen_champsim_conf.py sim_conf/champsim_dev_baseline.json
-			echo "./scripts/gen_champsim_conf_2.py sim_conf/champsim_dev_baseline.json ${base_conf}"
-			./scripts/gen_champsim_conf_2.py sim_conf/champsim_dev_baseline.json ${base_conf}
+			echo "./scripts/gen_champsim_conf_2.py ./sim_conf/champsim_dev_baseline.json ${base_conf}"
+			./scripts/gen_champsim_conf_2.py ./sim_conf/champsim_dev_baseline.json ${base_conf}
 			#echo "./scripts/gen_champsim_conf_2.py sim_conf/champsim_2MBpg_baseline.json ${base_conf}"
 			#./scripts/gen_champsim_conf_2.py sim_conf/champsim_2MBpgsz_baseline.json ${base_conf}
 			echo "./config.sh sim_conf/champsim_${base_conf}.json"
