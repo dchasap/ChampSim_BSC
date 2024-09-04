@@ -29,6 +29,7 @@ def parse_file(fname):
         return json.load(rfp)
 
 if __name__ == '__main__':
+    print("staring main")
     champsim_root = os.path.dirname(os.path.abspath(__file__))
     test_root = os.path.join(champsim_root, 'test')
     parser = argparse.ArgumentParser(description='Configure ChampSim')
