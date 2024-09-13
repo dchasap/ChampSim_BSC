@@ -10,7 +10,8 @@ source ./scripts/qualcom_srv_workloads.sh
 source ./scripts/qualcomm_srv_workloads.sh
 source ./scripts/cloudsuite_workloads.sh
 source ./scripts/shuhai_workloads.sh
-source ./scripts/datacenterGz_workloads.sh
+source ./scripts/server_workloads.sh
+#source ./scripts/datacenterGz_workloads.sh
 
 if [ "${BENCHSUITE}" == "qualcom_srv" ];then
 			TRACES="${QUALCOM_SRV1} ${QUALCOM_SRV2} ${QUALCOM_SRV3}"
@@ -69,12 +70,16 @@ elif [ "${BENCHSUITE}" == "datacenterGz" ]; then
 			echo "--"
 			echo ${DATACENTER_Gz}
 			TRACES_DIR="${DATACENTER_Gz_DIR}"
+elif [ "${BENCHSUITE}" == "server" ]; then
+			TRACES="${SERVER_WORKLOADS}"
+			TRACES_DIR="${SERVER_WORKLOADS_DIR}"
 elif [ "${BENCHSUITE}" == "test" ]; then 
 			#TRACES="srv_408.champsimtrace.xz"
 			#TRACES="srv_12.champsimtrace.xz"
 			#TRACES="smt_srv85_ap_srv73_ap_1024i.champsimtrace.xz"
 			#TRACES="smt_srv12_ap_srv99_ap_1024i.champsimtrace.xz"
 			TRACES="srv12_ap.champsimtrace.xz"
+			TRACES_DIR="${QUALCOMM_SRV_AP_DIR}"
 			#TRACES_DIR="${QUALCOMM_SRV_AP_DIR}"
 			#TRACES="smt_srv_12_srv_99_1024i.champsimtrace.xz"
 			#TRACES="smt_srv_s60_srv_s61_1024i.champsimtrace.xz"
@@ -99,3 +104,5 @@ for simpoint in $SIMPOINTS; do
 done
 BENCHMARKS=$(echo "${BENCHMARKS}" | xargs -n1 | sort -u | xargs)
 
+echo ${SIMPOINTS}
+echo ${BENCHMARKS}

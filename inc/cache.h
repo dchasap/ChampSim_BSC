@@ -37,6 +37,7 @@
 
 #if defined ENABLE_EXTRA_CACHE_STATS
 #include "reuse_dist.h"
+#include "page_address_stats.h"
 #endif
 
 #if defined PTP_REPLACEMENT_POLICY
@@ -60,6 +61,7 @@ struct cache_stats {
   uint64_t pf_useful = 0;
   uint64_t pf_useless = 0;
   uint64_t pf_fill = 0;
+	uint64_t pf_crossed = 0;
 
   std::array<std::array<uint64_t, NUM_CPUS>, NUM_TYPES> hits = {};
   std::array<std::array<uint64_t, NUM_CPUS>, NUM_TYPES> misses = {};
@@ -153,9 +155,15 @@ class CACHE : public champsim::operable, public MemoryRequestConsumer, public Me
 	};
 #endif
 
+#if defined (SPLIT_STLB)
+  std::pair<set_type::iterator, set_type::iterator> get_set_span(uint64_t address, uint8_t type);
+ 	std::pair<set_type::const_iterator, set_type::const_iterator> get_set_span(uint64_t address, uint8_t type) const;
+  std::size_t get_set_index(uint64_t address, uint8_t type) const;
+#else
   std::pair<set_type::iterator, set_type::iterator> get_set_span(uint64_t address);
-  std::pair<set_type::const_iterator, set_type::const_iterator> get_set_span(uint64_t address) const;
+ 	std::pair<set_type::const_iterator, set_type::const_iterator> get_set_span(uint64_t address) const;
   std::size_t get_set_index(uint64_t address) const;
+#endif
 
 public:
   struct NonTranslatingQueues : public champsim::operable {
@@ -237,6 +245,7 @@ public:
 
 #if defined ENABLE_EXTRA_CACHE_STATS
 //		ReuseDistanceCalculator* reuseDist;
+			PageAddressStatsHanlder* pageAddressStatsMon;
 			RecallDistanceMonitor* recallDistMon;
 #endif
 
@@ -259,11 +268,16 @@ public:
 
   std::size_t get_occupancy(uint8_t queue_type, uint64_t address) override final;
   std::size_t get_size(uint8_t queue_type, uint64_t address) override final;
-
+#if defined (SPLIT_STLB)
+  [[deprecated("Use get_set_index() instead.")]] uint64_t get_set(uint64_t address, uint8_t type) const;
+  [[deprecated("This function should not be used to access the blocks directly.")]] uint64_t get_way(uint64_t address, uint8_t type, uint64_t set) const;
+  uint64_t invalidate_entry(uint64_t inval_addr, uint8_t type);
+#else
   [[deprecated("Use get_set_index() instead.")]] uint64_t get_set(uint64_t address) const;
   [[deprecated("This function should not be used to access the blocks directly.")]] uint64_t get_way(uint64_t address, uint64_t set) const;
-
   uint64_t invalidate_entry(uint64_t inval_addr);
+#endif
+
   int prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata);
 
   [[deprecated("Use CACHE::prefetch_line(pf_addr, fill_this_level, prefetch_metadata) instead.")]] int
@@ -309,9 +323,9 @@ public:
   {
 #if defined FORCE_HIT 
 		if (force_hit) {
-			if (NAME.compare("cpu0_STLB") == 0) {
+			if (NAME.find("STLB") != std::string::npos) {
 				std::cout << "Using perfect instruction " << NAME << "." << std::endl;
-			}	else if (NAME.compare("cpu0_L1D") == 0) {
+			}	else if (NAME.find("L1D") != std::string::npos) {
 				std::cout << "Using secret unlimited cache for data PTEs in " << NAME << "." << std::endl;
 			} else {
 				std::cout << "Force hit not supported for " << NAME << "!" << std::endl;
@@ -321,17 +335,28 @@ public:
 #endif 
 
 #if defined ENABLE_EXTRA_CACHE_STATS
+		if (NAME.find("STLB") != std::string::npos) {
+			std::string page_address_stats_file_prefix = getenv("PAGE_ADDRESS_STATS_FILENAME_PREFIX");
+
+			pageAddressStatsMon = new PageAddressStatsHanlder(OFFSET_BITS,
+																								page_address_stats_file_prefix,
+																								true);
+		}	else {
+
+			pageAddressStatsMon = new PageAddressStatsHanlder(OFFSET_BITS, "", false);
+		}
+
 		std::string recall_dist_filename_prefix = getenv("RECALL_DIST_FILENAME_PREFIX");
 
 		bool enable_recallDistMon = false;
-		if (NAME.compare("cpu0_STLB") == 0) {
-			enable_recallDistMon = true;
-		} else if ((NAME.compare("cpu0_L1D") == 0)) {
-			enable_recallDistMon = true;
-		} else if ((NAME.compare("cpu0_L2C") == 0)) {
-			enable_recallDistMon = true;
+		if (NAME.find("STLB") != std::string::npos) {
+			enable_recallDistMon = false;
+		} else if ((NAME.find("L1D") != std::string::npos)) {
+			enable_recallDistMon = false;
+		} else if ((NAME.find("L2C") != std::string::npos)) {
+			enable_recallDistMon = false;
 		} else if ((NAME.compare("LLC") == 0)) {
-			enable_recallDistMon = true;	
+			enable_recallDistMon = false;	
 		}
 
 		recallDistMon = new RecallDistanceMonitor(NUM_SET, NUM_WAY, OFFSET_BITS,

@@ -218,6 +218,7 @@ int main(int argc, char** argv)
 
 #if defined ENABLE_EXTRA_CACHE_STATS
   for (CACHE& cache : caches) {
+    cache.pageAddressStatsMon->dump();
     cache.recallDistMon->dump();
 		delete cache.recallDistMon;
 	}
