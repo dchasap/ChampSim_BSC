@@ -152,6 +152,11 @@ void champsim::plain_printer::print(CACHE::stats_type stats)
     stream << stats.name << " AVERAGE dtMISS LATENCY: " << std::ceil(stats.total_dtmiss_latency) / std::ceil(TOTAL_MISS) << " cycles" << std::endl;
 #endif
 
+#if defined ENABLE_PAGE_CROSSING_STATS
+	stream << stats.name << " PAGE CROSSINGS (TLB HIT):" << std::setw(10) << stats.pf_crossing_pages_tlb_hit << " \n";
+	stream << stats.name << " PAGE CROSSINGS (TLB MISS):" << std::setw(10) << stats.pf_crossing_pages_tlb_miss << " \n";
+#endif
+
     stream << stats.name << " AVERAGE MISS LATENCY: " << std::ceil(stats.total_miss_latency) / std::ceil(TOTAL_MISS) << " cycles" << std::endl;
 
     // stream << " AVERAGE MISS LATENCY: " << (stats.total_miss_latency)/TOTAL_MISS << " cycles " << stats.total_miss_latency << "/" << TOTAL_MISS<< std::endl;

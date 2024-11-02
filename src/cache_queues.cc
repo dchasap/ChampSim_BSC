@@ -306,6 +306,9 @@ void CACHE::TranslatingQueues::return_data(const PACKET& packet)
       pq_entry.address = champsim::splice_bits(packet.data, pq_entry.v_address, LOG2_PAGE_SIZE); // translated address
       pq_entry.event_cycle = std::min(pq_entry.event_cycle, current_cycle + (warmup ? 0 : HIT_LATENCY));
       pq_entry.is_translated = true; // This entry is now translated
+#if defined (ENABLE_PAGE_CROSSING_STATS)
+			pq_entry.page_crossing = packet.page_crossing;
+#endif
     }
   }
 }

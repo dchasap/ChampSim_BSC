@@ -125,6 +125,13 @@
 							if (fill_mshr.type == PREFETCH)
 								sim_stats.back().pf_fill++;
 
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+							if ((NAME.find("ITLB") != std::string::npos) && (NAME.find("DTLB") != std::string::npos)
+									&& (NAME.find("STLB")) && fill_mshr.prefetch_from_this) {
+				
+								way->page_crossing = fill_mshr.page_crossing;
+							}
+#endif
 							way->valid = true;
 							way->prefetch = fill_mshr.prefetch_from_this;
 							way->dirty = (fill_mshr.type == WRITE);
@@ -269,6 +276,15 @@
 
 					cpu = handle_pkt.cpu;
 
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+if (((NAME.find("L1I") != std::string::npos) || (NAME.find("L1D") != std::string::npos))
+		&& (handle_pkt.type == PREFETCH) && (handle_pkt.page_crossing > 0)) {
+
+		if (handle_pkt.page_crossing == 1) sim_stats.back().pf_crossing_pages_tlb_hit++;
+		else if (handle_pkt.page_crossing == 2) sim_stats.back().pf_crossing_pages_tlb_miss++;
+	}
+#endif
+
 					// access cache
 				#if defined (SPLIT_STLB)
 					auto [set_begin, set_end] = get_set_span(handle_pkt.address, handle_pkt.is_instr);
@@ -365,6 +381,16 @@
 						auto copy{handle_pkt};
 						copy.data = way->data;
 						copy.pf_metadata = metadata_thru;
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+//						if (((NAME.find("STLB") != std::string::npos) || (NAME.find("ITLB") != std::string::npos)
+//								|| (NAME.find("DTLB") != std::string::npos)) && (handle_pkt.page_crossing == 2)) {
+						if ((NAME.find("STLB") != std::string::npos) && (handle_pkt.page_crossing == 2)) {
+
+							copy.page_crossing = 1;
+						}
+#endif  
+
 						for (auto ret : copy.to_return)
 							ret->return_data(copy);
 
@@ -374,6 +400,10 @@
 						if (way->prefetch && !handle_pkt.prefetch_from_this) {
 							sim_stats.back().pf_useful++;
 							way->prefetch = false;
+//#if defined(ENABLE_PAGE_CROSSING_STATS)
+//							if (way->page_crossing == 2) sim_stats.back().pf_crossing_pages_tlb_miss++;
+//							else if (way->page_crossing == 1) sim_stats.back().pf_crossing_pages_tlb_hit++;
+//#endif
 						}
 					} else {
 				#if defined FORCE_HIT
@@ -387,7 +417,7 @@
 						bool hit_forced = false;
 
 						if (NAME.find("STLB") != std::string::npos) {
-							if (force_hit) { // && !handle_pkt.is_instr) {
+							if ((force_hit) && !handle_pkt.is_instr) { //FIXME: 
 								if (handle_pkt.translation_level == 0) {
 									//std::tie(copy.data, penalty) = vmem->va_to_pa(handle_pkt.cpu, handle_pkt.v_address);
 									copy.data = vmem->va_to_pa(handle_pkt.cpu, handle_pkt.v_address).first;
@@ -590,6 +620,9 @@
 							mshr_entry->event_cycle = prior_event_cycle;
 							mshr_entry->cycle_enqueued = current_cycle;
 							mshr_entry->to_return = std::move(to_return);
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+							mshr_entry->page_crossing = 0;
+#endif 
 						}
 					} else {
 						if (mshr_full)  // not enough MSHR resource
@@ -623,6 +656,9 @@
 							mshr_entry->pf_metadata = fwd_pkt.pf_metadata;
 							mshr_entry->cycle_enqueued = current_cycle;
 							mshr_entry->event_cycle = std::numeric_limits<uint64_t>::max();
+#if defined (ENABLE_PAGE_CROSSING_STATS)
+							mshr_entry->page_crossing = fwd_pkt.page_crossing;
+#endif
 						}
 					}
 
@@ -856,6 +892,11 @@ int CACHE::prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefet
   pf_packet.address = pf_addr;
   pf_packet.v_address = virtual_prefetch ? pf_addr : 0;
 
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+	pf_packet.page_crossing = prefetch_metadata ? 2 : 0;
+#endif
+
+
 #ifdef ENABLE_EXTRA_CACHE_STATS
 	//FIXME: This works only without prefetchers, otherwise all PREFETCH accesses 
 	// cannot be accounted as instr or not
@@ -1018,6 +1059,11 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.back().pf_useless = sim_stats.back().pf_useless;
   roi_stats.back().pf_fill = sim_stats.back().pf_fill;
   roi_stats.back().pf_crossed = sim_stats.back().pf_crossed;
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+	roi_stats.back().pf_crossing_pages_tlb_hit = sim_stats.back().pf_crossing_pages_tlb_hit;
+	roi_stats.back().pf_crossing_pages_tlb_miss = sim_stats.back().pf_crossing_pages_tlb_miss;
+#endif
 
   roi_stats.back().total_miss_latency = sim_stats.back().total_miss_latency;
 

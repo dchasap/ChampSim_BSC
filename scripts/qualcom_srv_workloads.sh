@@ -1386,3 +1386,4 @@ server_038.champsimtrace.xz
 server_039.champsimtrace.xz
 "
 
+export QUALCOM_SRV_DIR="qualcom"

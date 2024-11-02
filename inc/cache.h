@@ -81,6 +81,10 @@ struct cache_stats {
 	uint64_t total_dtmiss_latency = 0;
 #endif
 
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+	uint64_t pf_crossing_pages_tlb_hit = 0;
+	uint64_t pf_crossing_pages_tlb_miss = 0;
+#endif  
 
   uint64_t total_miss_latency = 0;
 };
@@ -135,6 +139,10 @@ class CACHE : public champsim::operable, public MemoryRequestConsumer, public Me
 #if defined(MULTIPLE_PAGE_SIZE) 
 		uint32_t page_size = 0;
 		uint64_t base_vpn = 0;
+#endif
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+		uint64_t page_crossing = 0; 
 #endif
 
 /*
@@ -340,7 +348,7 @@ public:
 
 			pageAddressStatsMon = new PageAddressStatsHanlder(OFFSET_BITS,
 																								page_address_stats_file_prefix,
-																								true);
+																								false);
 		}	else {
 
 			pageAddressStatsMon = new PageAddressStatsHanlder(OFFSET_BITS, "", false);

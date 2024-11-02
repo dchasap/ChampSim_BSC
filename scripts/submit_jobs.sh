@@ -1,11 +1,6 @@
 #!/bin/bash
 
-HOME="/scratch/nas/3/dchasapi/ChampSim_BSC"
-#TRACE_DIR="/scratch/nas/3/dchasapi/champsim_traces"
-#TRACE_DIR="/scratch/nas/3/dchasapi/champsim_traces_smt"
-#TRACE_DIR="/scratch/nas/3/gvavouli/arvei_champsim/traces/shuhai"
-#TRACE_EXT_DIR="/scratch/nas/3/dchasapi/champsim_traces_pgsz_ext"
-
+HOME=`pwd`
 
 BENCHSUITE=$1 
 BIN=$2
@@ -14,18 +9,12 @@ DUMP_DIR=${HOME}/dump
 
 mkdir -p $DUMP_DIR
 
-source ${HOME}/scripts/benchmarks_all.sh
+source ${HOME}/scripts/benchmarks.sh
 export TRACES_DIR="/scratch/nas/3/dchasapi/champsim_traces/${TRACES_DIR}"
 
 for trace in $TRACES; do
 
-	if [ "${BENCHSUITE}" == "datacenterGz" ]; then
-		echo "datacenterGZ"
-		export suffix=.champsimtrace.gz
-	else
-		echo "no datacenterGZ"
-		export suffix=.champsimtrace.xz 
-	fi
+	export suffix=.champsimtrace.xz 
   export bench=${trace%$suffix}
 
 	echo "${bench}${DESCR_TAG}"
@@ -36,7 +25,7 @@ echo "#!/bin/bash
 #SBATCH -J chmpS_${bench}${DESCR_TAG}_run
 #SBATCH -q all 
 ##SBATCH -q large
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 
 export PTP_EXTRA_STATS_FILE=${HOME}/dump/${bench}${DESCR_TAG}_access_rate.csv
 #export REUSE_DIST_FILENAME_PREFIX=${HOME}/dump/${bench}${DESCR_TAG}_reuse_dist

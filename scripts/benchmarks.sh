@@ -1,17 +1,31 @@
 
-#source ./scripts/spec_cpu_workloads.sh
-#source ./scripts/gap_workloads.sh
-source ./scripts/qualcom_srv_workloads.sh
+TRACE_DIR="/scratch/nas/3/dchasapi/champsim_traces"
 
-TRACES=${QUALCOM_SRV}
+source ./scripts/spec_cpu_workloads.sh
+source ./scripts/qualcomm_srv_workloads.sh
 
-for trace in $TRACES; do
+if [ "${BENCHSUITE}" == "qualcomm_srv_ap"  ]; then
+			TRACES="${QUALCOMM_SRV_AP}"
+			TRACES_DIR="${QUALCOMM_SRV_AP_DIR}"
+elif [ "${BENCHSUITE}" == "selected_qualcomm_srv_ap"  ]; then
+			TRACES="${SELECTED_QUALCOMM_SRV_AP}"
+			TRACES_DIR="${QUALCOMM_SRV_AP_DIR}"
+elif [ "${BENCHSUITE}" == "smt_qualcomm_srv_ap"  ]; then
+			TRACES="${SMT_QUALCOMM_SRV_AP}"
+			TRACES_DIR="${QUALCOMM_SRV_AP_DIR}"
+elif [ "${BENCHSUITE}" == "spec" ]; then
+			TRACES="${SPEC_CPU_2006} ${SPEC_CPU_2017}"
+			TRACES_DIR="${SPEC_CPU_DIR}"
+fi
+
+SIMPOINTS=''
+for trace in $TRACES; do	
 	export suffix=.champsimtrace.xz 
 	export bench=${trace%$suffix}
-	#echo $bench
 	SIMPOINTS="$SIMPOINTS $bench"
 done
 
+BENCHMARKS=''
 for simpoint in $SIMPOINTS; do
 	export suffix=-*
 	export bench=${simpoint%$suffix}

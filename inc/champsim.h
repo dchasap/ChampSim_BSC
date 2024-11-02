@@ -20,16 +20,17 @@
 #include <cstdint>
 #include <exception>
 
-//#define MULTIPLE_PAGE_SIZE
+#define MULTIPLE_PAGE_SIZE
 #define ENABLE_EXTRA_CPU_STATS
 #define ENABLE_EXTRA_CACHE_STATS
+#define ENABLE_PAGE_CROSSING_STATS
 #define ENABLE_PTW_STATS
 #define FORCE_HIT
 //#define SPLIT_STLB
 //#define XDIP_REPLACEMENT_POLICY
 #define PTP_REPLACEMENT_POLICY
 #define ENABLE_TRANSLATION_AWARE_REPLACEMENT
-#define ENABLE_FDIP
+//#define ENABLE_FDIP
 
 
 #define TRACK_BRANCH_HISTORY // needed for chirp

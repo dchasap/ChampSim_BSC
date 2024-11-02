@@ -73,6 +73,10 @@ public:
 	bool is_pte = false;
 #endif
 
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+		uint64_t page_crossing = 0; 
+#endif
+
 };
 
 template <>
