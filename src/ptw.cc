@@ -111,6 +111,11 @@ auto PageTableWalker::step_translation(const mshr_type& source) -> std::optional
   packet.is_translated = true;
   packet.type = access_type::TRANSLATION;
 
+#if defined(EXPAND_PACKET)
+  packet.is_pte = true;
+  packet.translation_level = source.translation_level;
+#endif
+
   bool success = lower_level->add_rq(packet);
   if (success) {
     return source;

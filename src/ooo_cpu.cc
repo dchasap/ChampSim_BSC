@@ -103,6 +103,39 @@ void O3_CPU::initialize_instruction()
 
     IFETCH_BUFFER.back().ready_time = current_time;
   }
+
+#if defined(ENABLE_FDIP)
+  std::deque<ooo_model_instr>* TARGET_BUFFER = &IFETCH_BUFFER;
+  auto last_inst_id = fdip.getLastAddedInstr();
+  auto last_inst_addr = (std::begin(*TARGET_BUFFER));  
+  if (fdip.isEnabled()){
+    while ((last_inst_id >= last_inst_addr->instr_id) && 
+          (last_inst_addr != std::end(*TARGET_BUFFER))) last_inst_addr++;
+
+    for (; last_inst_addr != std::end(*TARGET_BUFFER); ++last_inst_addr){
+      fdip.push_back(last_inst_addr);
+    }
+
+    fdip.prune();
+    // Prefetch
+    uint32_t sent = 0;
+    while ((!fdip.empty()) && ( sent < fdip.getAggresivity())) {
+      auto tuple = fdip.get_prefetch_line();
+      champsim::address pf_addr = tuple.first;
+      uint64_t instr_id = tuple.second;
+      // Do not prefetch if the ip is already inflight
+      if (std::end(IFETCH_BUFFER) == std::find_if(std::begin(IFETCH_BUFFER), std::end(IFETCH_BUFFER), [pf_addr] (auto x){
+        return ((x.fetch_issued) && ((x.ip.template to<uint64_t>() >> LOG2_BLOCK_SIZE) == (pf_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)));
+      } ) ){   
+        if (l1i->prefetch_line(pf_addr, true, 0)) {
+          uint64_t current_cycle = current_time.time_since_epoch() / clock_period;
+          fdip.issue_prefetch(instr_id, current_cycle);
+        }
+        sent++;
+      }
+    }
+  }
+#endif
 }
 
 namespace
@@ -253,6 +286,10 @@ bool O3_CPU::do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, s
   fetch_packet.v_address = begin->ip;
   fetch_packet.instr_id = begin->instr_id;
   fetch_packet.ip = begin->ip;
+
+#if defined(EXPAND_PACKET)
+  fetch_packet.is_instr = true;
+#endif
 
   std::transform(begin, end, std::back_inserter(fetch_packet.instr_depend_on_me), [](const auto& instr) { return instr.instr_id; });
 
@@ -590,6 +627,11 @@ bool O3_CPU::do_complete_store(const LSQ_ENTRY& sq_entry)
   data_packet.instr_id = sq_entry.instr_id;
   data_packet.ip = sq_entry.ip;
 
+#if defined(EXPAND_PACKET)
+  data_packet.page_size = sq_entry.page_size;
+  data_packet.base_vpn = sq_entry.base_vpn;
+#endif
+
   if constexpr (champsim::debug_print) {
     fmt::print("[SQ] {} instr_id: {} vaddr: {}\n", __func__, data_packet.instr_id, data_packet.v_address);
   }
@@ -603,6 +645,11 @@ bool O3_CPU::execute_load(const LSQ_ENTRY& lq_entry)
   data_packet.v_address = lq_entry.virtual_address;
   data_packet.instr_id = lq_entry.instr_id;
   data_packet.ip = lq_entry.ip;
+
+#if defined(EXPAND_PACKET)
+  data_packet.page_size = lq_entry.page_size;
+  data_packet.base_vpn = lq_entry.base_vpn;
+#endif
 
   if constexpr (champsim::debug_print) {
     fmt::print("[LQ] {} instr_id: {} vaddr: {}\n", __func__, data_packet.instr_id, data_packet.v_address);

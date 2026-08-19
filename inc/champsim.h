@@ -26,6 +26,11 @@
 #include "util/bit_enum.h"
 #include "util/ratio.h"
 
+// Custom features
+#define ENABLE_FDIP
+#define ENABLE_PAGE_CROSSING_STATS
+#define EXPAND_PACKET
+
 extern const std::size_t NUM_CPUS;
 extern const unsigned BLOCK_SIZE;
 extern const unsigned PAGE_SIZE;

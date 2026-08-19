@@ -52,6 +52,45 @@ void to_json(nlohmann::json& j, const CACHE::stats_type& stats)
   statsmap.emplace("useful prefetch", stats.pf_useful);
   statsmap.emplace("useless prefetch", stats.pf_useless);
 
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+  statsmap.emplace("page crossings tlb hit", stats.pf_crossing_pages_tlb_hit);
+  statsmap.emplace("page crossings tlb miss", stats.pf_crossing_pages_tlb_miss);
+#endif
+
+#if defined(EXPAND_PACKET)
+  // Categorized statistics: i=instr, d=data, it=instr TLB, dt=data TLB
+  for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu) {
+    std::string cpu_prefix = (NUM_CPUS > 1) ? "cpu" + std::to_string(cpu) + " " : "";
+    
+    auto i_hits = stats.ihits.value_or(cpu, 0);
+    auto i_misses = stats.imisses.value_or(cpu, 0);
+    auto d_hits = stats.dhits.value_or(cpu, 0);
+    auto d_misses = stats.dmisses.value_or(cpu, 0);
+    auto it_hits = stats.ithits.value_or(cpu, 0);
+    auto it_misses = stats.itmisses.value_or(cpu, 0);
+    auto dt_hits = stats.dthits.value_or(cpu, 0);
+    auto dt_misses = stats.dtmisses.value_or(cpu, 0);
+    
+    if (i_hits + i_misses > 0)
+      statsmap.emplace(cpu_prefix + "i", nlohmann::json{{"hit", i_hits}, {"miss", i_misses}, {"access", i_hits + i_misses}});
+    if (d_hits + d_misses > 0)
+      statsmap.emplace(cpu_prefix + "d", nlohmann::json{{"hit", d_hits}, {"miss", d_misses}, {"access", d_hits + d_misses}});
+    if (it_hits + it_misses > 0)
+      statsmap.emplace(cpu_prefix + "it", nlohmann::json{{"hit", it_hits}, {"miss", it_misses}, {"access", it_hits + it_misses}});
+    if (dt_hits + dt_misses > 0)
+      statsmap.emplace(cpu_prefix + "dt", nlohmann::json{{"hit", dt_hits}, {"miss", dt_misses}, {"access", dt_hits + dt_misses}});
+    
+    if (i_misses > 0)
+      statsmap.emplace(cpu_prefix + "i miss latency", std::ceil(stats.total_imiss_latency) / std::ceil(i_misses));
+    if (d_misses > 0)
+      statsmap.emplace(cpu_prefix + "d miss latency", std::ceil(stats.total_dmiss_latency) / std::ceil(d_misses));
+    if (it_misses > 0)
+      statsmap.emplace(cpu_prefix + "it miss latency", std::ceil(stats.total_itmiss_latency) / std::ceil(it_misses));
+    if (dt_misses > 0)
+      statsmap.emplace(cpu_prefix + "dt miss latency", std::ceil(stats.total_dtmiss_latency) / std::ceil(dt_misses));
+  }
+#endif
+
   uint64_t total_downstream_demands = stats.fill.total();
   for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu)
     total_downstream_demands -= stats.fill.value_or(std::pair{access_type::PREFETCH, cpu}, fill_value_type{});

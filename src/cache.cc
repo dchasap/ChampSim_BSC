@@ -96,12 +96,29 @@ CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref
     : address(req.address), v_address(req.v_address), data(req.data), ip(req.ip), instr_id(req.instr_id), pf_metadata(req.pf_metadata), cpu(req.cpu),
       type(req.type), prefetch_from_this(local_pref), skip_fill(skip), is_translated(req.is_translated), instr_depend_on_me(req.instr_depend_on_me)
 {
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+  page_crossing = req.page_crossing;
+#endif
+
+#if defined(EXPAND_PACKET)
+  is_instr = req.is_instr;
+  is_pte = req.is_pte;
+  page_size = req.page_size;
+  base_vpn = req.base_vpn;
+#endif
 }
 
 CACHE::fill_type::fill_type(const tag_lookup_type& req, champsim::chrono::clock::time_point _time_enqueued)
     : address(req.address), v_address(req.v_address), ip(req.ip), instr_id(req.instr_id), cpu(req.cpu), type(req.type),
       prefetch_from_this(req.prefetch_from_this), time_enqueued(_time_enqueued), instr_depend_on_me(req.instr_depend_on_me), to_return(req.to_return)
 {
+#if defined(EXPAND_PACKET)
+  is_instr = req.is_instr;
+  is_pte = req.is_pte;
+  page_size = req.page_size;
+  base_vpn = req.base_vpn;
+  translation_level = req.translation_level;
+#endif
 }
 
 CACHE::fill_type CACHE::fill_type::merge(fill_type predecessor, fill_type successor)
@@ -148,6 +165,14 @@ auto CACHE::fill_block(fill_type fill, uint32_t metadata) -> BLOCK
   to_fill.v_address = fill.v_address;
   to_fill.data = fill.data_promise->data;
   to_fill.pf_metadata = metadata;
+
+#if defined(EXPAND_PACKET)
+  to_fill.is_instr = fill.is_instr;
+  to_fill.is_pte = fill.is_pte;
+  to_fill.pte_level = static_cast<uint8_t>(fill.translation_level);
+  to_fill.page_size = fill.page_size;
+  to_fill.base_vpn = fill.base_vpn;
+#endif
 
   return to_fill;
 }
@@ -199,6 +224,13 @@ bool CACHE::handle_fill(const fill_type& fill)
     writeback_packet.pf_metadata = way->pf_metadata;
     writeback_packet.response_requested = false;
 
+#if defined(EXPAND_PACKET)
+    writeback_packet.is_instr = way->is_instr;
+    writeback_packet.is_pte = way->is_pte;
+    writeback_packet.page_size = way->page_size;
+    writeback_packet.base_vpn = way->base_vpn;
+#endif
+
     if constexpr (champsim::debug_print) {
       fmt::print("[{}] {} evict address: {} v_address: {} prefetch_metadata: {}\n", NAME, __func__, writeback_packet.address, writeback_packet.v_address,
                  fill.data_promise->pf_metadata);
@@ -232,8 +264,27 @@ bool CACHE::handle_fill(const fill_type& fill)
   }
 
   // COLLECT STATS
-  if (fill.type != access_type::PREFETCH)
-    sim_stats.total_miss_latency_cycles += (current_time - (fill.time_enqueued + clock_period)) / clock_period;
+  if (fill.type != access_type::PREFETCH) {
+    auto latency = (current_time - (fill.time_enqueued + clock_period)) / clock_period;
+    sim_stats.total_miss_latency_cycles += latency;
+
+#if defined(EXPAND_PACKET)
+    // Track categorized latencies
+    if (fill.is_pte) {
+      if (fill.is_instr) {
+        sim_stats.total_itmiss_latency += latency;
+      } else {
+        sim_stats.total_dtmiss_latency += latency;
+      }
+    } else {
+      if (fill.is_instr) {
+        sim_stats.total_imiss_latency += latency;
+      } else {
+        sim_stats.total_dmiss_latency += latency;
+      }
+    }
+#endif
+  }
   sim_stats.fill.increment(std::pair{fill.type, fill.cpu});
 
   response_type response{fill.address, fill.v_address, fill.data_promise->data, metadata_thru, fill.instr_depend_on_me};
@@ -273,6 +324,23 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
 
+#if defined(EXPAND_PACKET)
+    // Categorize hits: i=instr, d=data, it=instr TLB, dt=data TLB
+    if (handle_pkt.is_pte) {
+      if (handle_pkt.is_instr) {
+        sim_stats.ithits.increment(handle_pkt.cpu);
+      } else {
+        sim_stats.dthits.increment(handle_pkt.cpu);
+      }
+    } else {
+      if (handle_pkt.is_instr) {
+        sim_stats.ihits.increment(handle_pkt.cpu);
+      } else {
+        sim_stats.dhits.increment(handle_pkt.cpu);
+      }
+    }
+#endif
+
     response_type response{handle_pkt.address, handle_pkt.v_address, way->data, metadata_thru, handle_pkt.instr_depend_on_me};
     for (auto* ret : handle_pkt.to_return) {
       ret->push_back(response);
@@ -285,6 +353,15 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
       ++sim_stats.pf_useful;
       way->prefetch = false;
     }
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+    // Track page crossing statistics for prefetches
+    if (handle_pkt.type == access_type::PREFETCH) {
+      if (handle_pkt.pf_metadata & 0x1) { // Check if this is a cross-page prefetch
+        ++sim_stats.pf_crossing_pages_tlb_hit;
+      }
+    }
+#endif
   }
 
   return hit;
@@ -310,6 +387,10 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
 
   fwd_pkt.instr_depend_on_me = handle_pkt.instr_depend_on_me;
   fwd_pkt.response_requested = (!handle_pkt.prefetch_from_this || !handle_pkt.skip_fill);
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+  fwd_pkt.page_crossing = handle_pkt.page_crossing;
+#endif
 
   return std::pair{std::move(to_allocate), std::move(fwd_pkt)};
 }
@@ -369,6 +450,23 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
   }
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+
+#if defined(EXPAND_PACKET)
+  // Categorize misses: i=instr, d=data, it=instr TLB, dt=data TLB
+  if (handle_pkt.is_pte) {
+    if (handle_pkt.is_instr) {
+      sim_stats.itmisses.increment(handle_pkt.cpu);
+    } else {
+      sim_stats.dtmisses.increment(handle_pkt.cpu);
+    }
+  } else {
+    if (handle_pkt.is_instr) {
+      sim_stats.imisses.increment(handle_pkt.cpu);
+    } else {
+      sim_stats.dmisses.increment(handle_pkt.cpu);
+    }
+  }
+#endif
 
   return true;
 }
@@ -584,6 +682,17 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
   pf_packet.address = pf_addr;
   pf_packet.v_address = virtual_prefetch ? pf_addr : champsim::address{};
   pf_packet.is_translated = !virtual_prefetch;
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+  pf_packet.page_crossing = prefetch_metadata ? 2 : 0;
+#endif
+
+#if defined(EXPAND_PACKET)
+  // Set is_instr for instruction cache prefetches
+  if (NAME.find("L1I") != std::string::npos) {
+    pf_packet.is_instr = true;
+  }
+#endif
 
   internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
   ++sim_stats.pf_issued;
@@ -872,6 +981,11 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.pf_useful = sim_stats.pf_useful;
   roi_stats.pf_useless = sim_stats.pf_useless;
   roi_stats.pf_fill = sim_stats.pf_fill;
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+  roi_stats.pf_crossing_pages_tlb_hit = sim_stats.pf_crossing_pages_tlb_hit;
+  roi_stats.pf_crossing_pages_tlb_miss = sim_stats.pf_crossing_pages_tlb_miss;
+#endif
 
   for (auto* ul : upper_levels) {
     ul->roi_stats.RQ_ACCESS = ul->sim_stats.RQ_ACCESS;

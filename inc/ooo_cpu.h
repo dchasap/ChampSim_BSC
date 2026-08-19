@@ -45,6 +45,10 @@
 #include "util/lru_table.h"
 #include "util/to_underlying.h"
 
+#if defined(ENABLE_FDIP)
+#include "fdip.h"
+#endif
+
 class CACHE;
 class CacheBus
 {
@@ -70,6 +74,11 @@ struct LSQ_ENTRY : champsim::program_ordered<LSQ_ENTRY> {
 
   std::array<uint8_t, 2> asid = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
   bool fetch_issued = false;
+
+#if defined(EXPAND_PACKET)
+  uint32_t page_size = 0;
+  uint64_t base_vpn = 0;
+#endif
 
   uint64_t producer_id = std::numeric_limits<uint64_t>::max();
   std::vector<std::reference_wrapper<std::optional<LSQ_ENTRY>>> lq_depend_on_me{};
@@ -144,6 +153,10 @@ public:
 
   CacheBus L1I_bus, L1D_bus;
   CACHE* l1i;
+
+#if defined(ENABLE_FDIP)
+  FDIP fdip = FDIP(16);
+#endif
 
   void initialize() final;
   long operate() final;

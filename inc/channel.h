@@ -62,6 +62,18 @@ class channel
     champsim::address ip{};
 
     std::vector<uint64_t> instr_depend_on_me{};
+
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+    uint64_t page_crossing = 0;
+#endif
+
+#if defined(EXPAND_PACKET)
+    bool is_instr = false;
+    bool is_pte = false;
+    uint32_t page_size = 0;
+    uint64_t base_vpn = 0;
+    std::size_t translation_level = 0;
+#endif
   };
 
   struct response {

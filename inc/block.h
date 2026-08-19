@@ -31,6 +31,14 @@ struct cache_block {
   champsim::address data{};
 
   uint32_t pf_metadata = 0;
+
+#if defined(EXPAND_PACKET)
+  bool is_instr = false;
+  bool is_pte = false;
+  uint8_t pte_level = 0;
+  uint32_t page_size = 0;
+  uint64_t base_vpn = 0;
+#endif
 };
 } // namespace champsim
 

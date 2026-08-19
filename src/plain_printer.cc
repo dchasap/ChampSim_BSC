@@ -119,6 +119,37 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
     lines.push_back(fmt::format("cpu{}->{} PREFETCH REQUESTED: {:10} ISSUED: {:10} USEFUL: {:10} USELESS: {:10}", cpu, stats.name, stats.pf_requested,
                                 stats.pf_issued, stats.pf_useful, stats.pf_useless));
 
+#if defined(ENABLE_PAGE_CROSSING_STATS)
+    lines.push_back(fmt::format("cpu{}->{} PAGE CROSSINGS (TLB HIT): {:10}", cpu, stats.name, stats.pf_crossing_pages_tlb_hit));
+    lines.push_back(fmt::format("cpu{}->{} PAGE CROSSINGS (TLB MISS): {:10}", cpu, stats.name, stats.pf_crossing_pages_tlb_miss));
+#endif
+
+#if defined(EXPAND_PACKET)
+    // Categorized statistics: i=instr, d=data, it=instr TLB, dt=data TLB
+    auto i_access = stats.ihits.value_or(cpu, 0) + stats.imisses.value_or(cpu, 0);
+    auto d_access = stats.dhits.value_or(cpu, 0) + stats.dmisses.value_or(cpu, 0);
+    auto it_access = stats.ithits.value_or(cpu, 0) + stats.itmisses.value_or(cpu, 0);
+    auto dt_access = stats.dthits.value_or(cpu, 0) + stats.dtmisses.value_or(cpu, 0);
+
+    if (i_access > 0)
+      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "i", i_access, stats.ihits.value_or(cpu, 0), stats.imisses.value_or(cpu, 0)));
+    if (d_access > 0)
+      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "d", d_access, stats.dhits.value_or(cpu, 0), stats.dmisses.value_or(cpu, 0)));
+    if (it_access > 0)
+      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "it", it_access, stats.ithits.value_or(cpu, 0), stats.itmisses.value_or(cpu, 0)));
+    if (dt_access > 0)
+      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "dt", dt_access, stats.dthits.value_or(cpu, 0), stats.dtmisses.value_or(cpu, 0)));
+
+    if (stats.imisses.value_or(cpu, 0) > 0)
+      lines.push_back(fmt::format("cpu{}->{} AVERAGE i MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_imiss_latency, stats.imisses.value_or(cpu, 0))));
+    if (stats.dmisses.value_or(cpu, 0) > 0)
+      lines.push_back(fmt::format("cpu{}->{} AVERAGE d MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_dmiss_latency, stats.dmisses.value_or(cpu, 0))));
+    if (stats.itmisses.value_or(cpu, 0) > 0)
+      lines.push_back(fmt::format("cpu{}->{} AVERAGE it MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_itmiss_latency, stats.itmisses.value_or(cpu, 0))));
+    if (stats.dtmisses.value_or(cpu, 0) > 0)
+      lines.push_back(fmt::format("cpu{}->{} AVERAGE dt MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_dtmiss_latency, stats.dtmisses.value_or(cpu, 0))));
+#endif
+
     uint64_t total_downstream_demands = total_fill - stats.fill.value_or(std::pair{access_type::PREFETCH, cpu}, fill_value_type{});
     lines.push_back(
         fmt::format("cpu{}->{} AVERAGE MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_miss_latency_cycles, total_downstream_demands)));
