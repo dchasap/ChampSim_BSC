@@ -37,6 +37,23 @@ void to_json(nlohmann::json& j, const O3_CPU::stats_type& stats)
                      {"cycles", stats.cycles()},
                      {"Avg ROB occupancy at mispredict", std::ceil(stats.total_rob_occupancy_at_branch_mispredict) / std::ceil(total_mispredictions)},
                      {"mispredict", mpki}};
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  auto instr_total = stats.instr_large_page_accesses + stats.instr_small_page_accesses;
+  auto data_total = stats.data_large_page_accesses + stats.data_small_page_accesses;
+
+  nlohmann::json instr_json{{"large", stats.instr_large_page_accesses}, {"small", stats.instr_small_page_accesses}, {"total", instr_total}};
+  if (instr_total > 0) {
+    instr_json["large_pct"] = (100.0 * static_cast<double>(stats.instr_large_page_accesses)) / static_cast<double>(instr_total);
+  }
+
+  nlohmann::json data_json{{"large", stats.data_large_page_accesses}, {"small", stats.data_small_page_accesses}, {"total", data_total}};
+  if (data_total > 0) {
+    data_json["large_pct"] = (100.0 * static_cast<double>(stats.data_large_page_accesses)) / static_cast<double>(data_total);
+  }
+
+  j["page_size_accesses"] = nlohmann::json{{"instruction", instr_json}, {"data", data_json}};
+#endif
 }
 
 void to_json(nlohmann::json& j, const CACHE::stats_type& stats)

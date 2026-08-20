@@ -18,6 +18,13 @@ struct cpu_stats {
   champsim::stats::event_counter<branch_type> total_branch_types = {};
   champsim::stats::event_counter<branch_type> branch_type_misses = {};
 
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  uint64_t instr_large_page_accesses = 0;
+  uint64_t instr_small_page_accesses = 0;
+  uint64_t data_large_page_accesses = 0;
+  uint64_t data_small_page_accesses = 0;
+#endif
+
   [[nodiscard]] auto instrs() const { return end_instrs - begin_instrs; }
   [[nodiscard]] auto cycles() const { return end_cycles - begin_cycles; }
 };

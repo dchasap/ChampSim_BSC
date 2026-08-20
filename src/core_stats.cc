@@ -11,5 +11,12 @@ cpu_stats operator-(cpu_stats lhs, cpu_stats rhs)
   lhs.total_branch_types -= rhs.total_branch_types;
   lhs.branch_type_misses -= rhs.branch_type_misses;
 
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  lhs.instr_large_page_accesses -= rhs.instr_large_page_accesses;
+  lhs.instr_small_page_accesses -= rhs.instr_small_page_accesses;
+  lhs.data_large_page_accesses -= rhs.data_large_page_accesses;
+  lhs.data_small_page_accesses -= rhs.data_small_page_accesses;
+#endif
+
   return lhs;
 }

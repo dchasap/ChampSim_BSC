@@ -103,6 +103,8 @@ CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref
 #if defined(EXPAND_PACKET)
   is_instr = req.is_instr;
   is_pte = req.is_pte;
+#endif
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   page_size = req.page_size;
   base_vpn = req.base_vpn;
 #endif
@@ -115,9 +117,11 @@ CACHE::fill_type::fill_type(const tag_lookup_type& req, champsim::chrono::clock:
 #if defined(EXPAND_PACKET)
   is_instr = req.is_instr;
   is_pte = req.is_pte;
+  translation_level = req.translation_level;
+#endif
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   page_size = req.page_size;
   base_vpn = req.base_vpn;
-  translation_level = req.translation_level;
 #endif
 }
 
@@ -287,7 +291,11 @@ bool CACHE::handle_fill(const fill_type& fill)
   }
   sim_stats.fill.increment(std::pair{fill.type, fill.cpu});
 
-  response_type response{fill.address, fill.v_address, fill.data_promise->data, metadata_thru, fill.instr_depend_on_me};
+  response_type response{fill.address, fill.v_address, fill.data_promise->data, metadata_thru, fill.instr_depend_on_me
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                         , fill.page_size, fill.base_vpn
+#endif
+  };
   for (auto* ret : fill.to_return) {
     ret->push_back(response);
   }
@@ -341,7 +349,11 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
     }
 #endif
 
-    response_type response{handle_pkt.address, handle_pkt.v_address, way->data, metadata_thru, handle_pkt.instr_depend_on_me};
+    response_type response{handle_pkt.address, handle_pkt.v_address, way->data, metadata_thru, handle_pkt.instr_depend_on_me
+  #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                 , way->page_size, way->base_vpn
+  #endif
+    };
     for (auto* ret : handle_pkt.to_return) {
       ret->push_back(response);
     }
@@ -387,6 +399,14 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
 
   fwd_pkt.instr_depend_on_me = handle_pkt.instr_depend_on_me;
   fwd_pkt.response_requested = (!handle_pkt.prefetch_from_this || !handle_pkt.skip_fill);
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  fwd_pkt.page_size = handle_pkt.page_size;
+  fwd_pkt.base_vpn = handle_pkt.base_vpn;
+#endif
+#if defined(EXPAND_PACKET)
+  fwd_pkt.translation_level = handle_pkt.translation_level;
+#endif
 
 #if defined(ENABLE_PAGE_CROSSING_STATS)
   fwd_pkt.page_crossing = handle_pkt.page_crossing;
@@ -738,6 +758,49 @@ void CACHE::finish_packet(const response_type& packet)
 
 void CACHE::finish_translation(const response_type& packet)
 {
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  auto matches_vpage = [&packet, this](const auto& entry) {
+    if (entry.is_translated) {
+      return false;
+    }
+
+    bool match = false;
+    // If entry has page_size == 0 (no metadata, e.g., from prefetch), match by vpage only
+    if (entry.page_size == 0) {
+      auto page_num = champsim::page_number{packet.v_address};
+      match = champsim::page_number{entry.v_address} == page_num;
+    } else if (packet.page_size == 2) {
+      match = entry.page_size == 2 && entry.base_vpn == packet.base_vpn;
+    } else if (packet.page_size == 1) {
+      match = entry.page_size == 1 && entry.base_vpn == packet.base_vpn;
+    } else {
+      auto page_num = champsim::page_number{packet.v_address};
+      match = champsim::page_number{entry.v_address} == page_num;
+    }
+    return match;
+  };
+
+  auto mark_translated = [&packet, this](auto& entry) {
+    [[maybe_unused]] auto old_address = entry.address;
+
+    if (packet.page_size == 2) {
+      auto large_page_offset_bits = champsim::data::bits{LOG2_LARGE_PAGE_SIZE};
+      auto p_page = packet.data.slice_upper(large_page_offset_bits);
+      auto v_offset = entry.v_address.slice_lower(large_page_offset_bits);
+      entry.address = champsim::address{champsim::splice(p_page, v_offset)};
+    } else {
+      auto p_page = champsim::page_number{packet.data};
+      entry.address = champsim::address{champsim::splice(p_page, champsim::page_offset{entry.v_address})};
+    }
+
+    entry.is_translated = true;
+
+    if constexpr (champsim::debug_print) {
+      fmt::print("[{}_TRANSLATE] finish_translation old: {} paddr: {} vaddr: {} type: {} cycle: {}\n", this->NAME, old_address, entry.address, entry.v_address,
+                 access_type_names.at(champsim::to_underlying(entry.type)), this->current_time.time_since_epoch() / this->clock_period);
+    }
+  };
+#else
   auto matches_vpage = [page_num = champsim::page_number{packet.v_address}](const auto& entry) {
     return (champsim::page_number{entry.v_address} == page_num) && !entry.is_translated;
   };
@@ -751,6 +814,7 @@ void CACHE::finish_translation(const response_type& packet)
                  access_type_names.at(champsim::to_underlying(entry.type)), this->current_time.time_since_epoch() / this->clock_period);
     }
   };
+#endif
 
   // Restart stashed translations
   auto finish_begin = std::find_if_not(std::begin(translation_stash), std::end(translation_stash), [](const auto& x) { return x.is_translated; });
@@ -782,6 +846,11 @@ void CACHE::issue_translation(tag_lookup_type& q_entry) const
 
     fwd_pkt.instr_depend_on_me = q_entry.instr_depend_on_me;
     fwd_pkt.is_translated = true;
+
+  #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    fwd_pkt.page_size = q_entry.page_size;
+    fwd_pkt.base_vpn = q_entry.base_vpn;
+  #endif
 
     q_entry.translate_issued = lower_translate->add_rq(fwd_pkt);
     if constexpr (champsim::debug_print) {

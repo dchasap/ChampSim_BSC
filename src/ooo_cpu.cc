@@ -19,7 +19,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <numeric>
+#include <sstream>
+#include <tuple>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -27,9 +30,29 @@
 #include "cache.h"
 #include "champsim.h"
 #include "deadlock.h"
+#include "env_var.h"
 #include "event_listeners.h"
 #include "instruction.h"
 #include "util/span.h"
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+namespace
+{
+constexpr uint32_t SMALL_PAGE_CLASS = 1;
+constexpr uint32_t LARGE_PAGE_CLASS = 2;
+
+int clamp_ratio(int x)
+{
+  if (x < 0) {
+    return 0;
+  }
+  if (x > 100) {
+    return 100;
+  }
+  return x;
+}
+} // namespace
+#endif
 
 long O3_CPU::operate()
 {
@@ -57,6 +80,29 @@ void O3_CPU::initialize()
   // BRANCH PREDICTOR & BTB
   impl_initialize_branch_predictor();
   impl_initialize_btb();
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  if (auto seed = champsim::EnvVar<unsigned long long>::get("PAGE_SIZE_ASSIGNMENT_SEED")) {
+    page_size_rng.seed(static_cast<std::mt19937::result_type>(*seed));
+  } else {
+    page_size_rng.seed(std::random_device{}());
+  }
+
+  instr_page_size_dist = clamp_ratio(champsim::EnvVar<int>::get_or("INSTR_PAGE_SIZE_DIST", 0));
+  data_page_size_dist = clamp_ratio(champsim::EnvVar<int>::get_or("DATA_PAGE_SIZE_DIST", 0));
+
+  if (auto file = champsim::EnvVar<std::string>::get("INSTR_PAGE_DIST_FILENAME")) {
+    instr_page_dist_filename = *file;
+    load_page_size_assignments(instr_page_dist_filename, code_page_sizes);
+  }
+  if (auto file = champsim::EnvVar<std::string>::get("DATA_PAGE_DIST_FILENAME")) {
+    data_page_dist_filename = *file;
+    load_page_size_assignments(data_page_dist_filename, data_page_sizes);
+  }
+
+  fmt::print("[CPU{}] Instruction large-page ratio: {}%\n", cpu, instr_page_size_dist);
+  fmt::print("[CPU{}] Data large-page ratio: {}%\n", cpu, data_page_size_dist);
+#endif
 }
 
 void O3_CPU::begin_phase()
@@ -83,6 +129,17 @@ void O3_CPU::end_phase(unsigned finished_cpu)
     finish_phase_time = current_time;
 
     roi_stats = sim_stats;
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    if (!warmup) {
+      if (!instr_page_dist_filename.empty()) {
+        save_page_size_assignments(instr_page_dist_filename, code_page_sizes);
+      }
+      if (!data_page_dist_filename.empty()) {
+        save_page_size_assignments(data_page_dist_filename, data_page_sizes);
+      }
+    }
+#endif
   }
 }
 
@@ -289,6 +346,12 @@ bool O3_CPU::do_fetch_instruction(std::deque<ooo_model_instr>::iterator begin, s
 
 #if defined(EXPAND_PACKET)
   fetch_packet.is_instr = true;
+#endif 
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  auto [pgsz, base_vpn] = classify_page(begin->ip, true);
+  fetch_packet.page_size = pgsz;
+  fetch_packet.base_vpn = base_vpn;
 #endif
 
   std::transform(begin, end, std::back_inserter(fetch_packet.instr_depend_on_me), [](const auto& instr) { return instr.instr_id; });
@@ -532,6 +595,12 @@ void O3_CPU::do_memory_scheduling(ooo_model_instr& instr)
     assert(q_entry != std::end(LQ));
     q_entry->emplace(smem, instr.instr_id, instr.ip, instr.asid); // add it to the load queue
 
+  #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    auto [pgsz, base_vpn] = classify_page(smem, false);
+    (*q_entry)->page_size = pgsz;
+    (*q_entry)->base_vpn = base_vpn;
+  #endif
+
     // Check for forwarding
     auto sq_it = std::max_element(std::begin(SQ), std::end(SQ), [smem](const auto& lhs, const auto& rhs) {
       return lhs.virtual_address != smem || (rhs.virtual_address == smem && LSQ_ENTRY::program_order(lhs, rhs));
@@ -555,6 +624,12 @@ void O3_CPU::do_memory_scheduling(ooo_model_instr& instr)
   // store
   for (auto& dmem : instr.destination_memory) {
     SQ.emplace_back(dmem, instr.instr_id, instr.ip, instr.asid); // add it to the store queue
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    auto [pgsz, base_vpn] = classify_page(dmem, false);
+    SQ.back().page_size = pgsz;
+    SQ.back().base_vpn = base_vpn;
+#endif
   }
 
   if constexpr (champsim::debug_print) {
@@ -878,3 +953,99 @@ bool CacheBus::issue_write(request_type data_packet)
 
   return lower_level->add_wq(data_packet);
 }
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+void O3_CPU::load_page_size_assignments(const std::string& filename, std::unordered_map<uint64_t, uint8_t>& table)
+{
+  std::ifstream in(filename);
+  if (!in) {
+    return;
+  }
+
+  std::string line;
+  while (std::getline(in, line)) {
+    auto sep = line.find(':');
+    if (sep == std::string::npos) {
+      continue;
+    }
+
+    std::string key_str = line.substr(0, sep);
+    std::string val_str = line.substr(sep + 1);
+    uint64_t key = 0;
+    unsigned int value = 0;
+    std::istringstream key_stream(key_str);
+    std::istringstream val_stream(val_str);
+    if ((key_stream >> key) && (val_stream >> value) && (value == SMALL_PAGE_CLASS || value == LARGE_PAGE_CLASS)) {
+      table[key] = static_cast<uint8_t>(value);
+    }
+  }
+}
+
+void O3_CPU::save_page_size_assignments(const std::string& filename, const std::unordered_map<uint64_t, uint8_t>& table) const
+{
+  std::vector<std::pair<uint64_t, uint8_t>> entries;
+  entries.reserve(table.size());
+  for (const auto& kv : table) {
+    entries.push_back(kv);
+  }
+  std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+
+  std::ofstream out(filename, std::ios::out | std::ios::trunc);
+  if (!out) {
+    return;
+  }
+
+  for (const auto& [key, value] : entries) {
+    out << key << ':' << static_cast<unsigned int>(value) << '\n';
+  }
+}
+
+std::pair<uint32_t, uint64_t> O3_CPU::classify_page(champsim::address addr, bool is_instruction)
+{
+  auto& table = is_instruction ? code_page_sizes : data_page_sizes;
+  const auto raw_addr = addr.to<uint64_t>();
+  const uint64_t large_key = raw_addr >> LOG2_LARGE_PAGE_SIZE;
+  const uint64_t small_key = raw_addr >> LOG2_PAGE_SIZE;
+
+  // Check small page key FIRST - once a specific 4KB page is classified, 
+  // it should stay that way even if the encompassing 2MB region is later classified
+  if (auto it = table.find(small_key); it != table.end() && it->second == SMALL_PAGE_CLASS) {
+    if (is_instruction) {
+      ++sim_stats.instr_small_page_accesses;
+    } else {
+      ++sim_stats.data_small_page_accesses;
+    }
+    return {SMALL_PAGE_CLASS, small_key};
+  }
+
+  // Then check large page key
+  if (auto it = table.find(large_key); it != table.end() && it->second == LARGE_PAGE_CLASS) {
+    if (is_instruction) {
+      ++sim_stats.instr_large_page_accesses;
+    } else {
+      ++sim_stats.data_large_page_accesses;
+    }
+    return {LARGE_PAGE_CLASS, large_key};
+  }
+
+  const int ratio = is_instruction ? instr_page_size_dist : data_page_size_dist;
+  const bool large = page_size_roll(page_size_rng) < ratio;
+  if (large) {
+    table[large_key] = static_cast<uint8_t>(LARGE_PAGE_CLASS);
+    if (is_instruction) {
+      ++sim_stats.instr_large_page_accesses;
+    } else {
+      ++sim_stats.data_large_page_accesses;
+    }
+    return {LARGE_PAGE_CLASS, large_key};
+  }
+
+  table[small_key] = static_cast<uint8_t>(SMALL_PAGE_CLASS);
+  if (is_instruction) {
+    ++sim_stats.instr_small_page_accesses;
+  } else {
+    ++sim_stats.data_small_page_accesses;
+  }
+  return {SMALL_PAGE_CLASS, small_key};
+}
+#endif

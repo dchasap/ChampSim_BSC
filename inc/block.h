@@ -36,6 +36,8 @@ struct cache_block {
   bool is_instr = false;
   bool is_pte = false;
   uint8_t pte_level = 0;
+#endif
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   uint32_t page_size = 0;
   uint64_t base_vpn = 0;
 #endif

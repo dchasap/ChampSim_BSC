@@ -103,6 +103,11 @@ struct DRAM_CHANNEL final : public champsim::operable {
 
     uint32_t pf_metadata = 0;
 
+  #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    uint32_t page_size = 0;
+    uint64_t base_vpn = 0;
+  #endif
+
     champsim::address address{};
     champsim::address v_address{};
     champsim::address data{};

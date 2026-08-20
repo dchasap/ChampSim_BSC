@@ -64,6 +64,11 @@ class PageTableWalker : public champsim::operable
 
     std::size_t translation_level = 0;
 
+  #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    uint32_t page_size = 0;
+    uint64_t base_vpn = 0;
+  #endif
+
     mshr_type(const request_type& req, std::size_t level);
   };
 

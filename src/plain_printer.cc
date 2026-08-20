@@ -62,6 +62,15 @@ std::vector<std::string> champsim::plain_printer::format(O3_CPU::stats_type stat
                                 ::print_ratio(std::kilo::num * stats.branch_type_misses.value_or(idx, 0), stats.instrs())));
   }
 
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  auto instr_total = stats.instr_large_page_accesses + stats.instr_small_page_accesses;
+  auto data_total = stats.data_large_page_accesses + stats.data_small_page_accesses;
+  lines.push_back(fmt::format("{} Page Size Accesses (instruction) LARGE: {} SMALL: {} LARGE%: {}", stats.name, stats.instr_large_page_accesses,
+                              stats.instr_small_page_accesses, ::print_ratio(100 * stats.instr_large_page_accesses, instr_total)));
+  lines.push_back(fmt::format("{} Page Size Accesses (data) LARGE: {} SMALL: {} LARGE%: {}", stats.name, stats.data_large_page_accesses,
+                              stats.data_small_page_accesses, ::print_ratio(100 * stats.data_large_page_accesses, data_total)));
+#endif
+
   return lines;
 }
 

@@ -87,9 +87,11 @@ class CACHE : public champsim::operable
 #if defined(EXPAND_PACKET)
     bool is_instr = false;
     bool is_pte = false;
+    std::size_t translation_level = 0;
+#endif
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     uint32_t page_size = 0;
     uint64_t base_vpn = 0;
-    std::size_t translation_level = 0;
 #endif
 
     explicit tag_lookup_type(request_type req) : tag_lookup_type(req, false, false) {}
@@ -123,9 +125,11 @@ public:
 #if defined(EXPAND_PACKET)
     bool is_instr = false;
     bool is_pte = false;
+    std::size_t translation_level = 0;
+#endif
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     uint32_t page_size = 0;
     uint64_t base_vpn = 0;
-    std::size_t translation_level = 0;
 #endif
 
     fill_type(const tag_lookup_type& req, champsim::chrono::clock::time_point _time_enqueued);

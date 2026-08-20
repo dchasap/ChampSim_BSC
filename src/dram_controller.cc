@@ -111,7 +111,11 @@ long DRAM_CHANNEL::operate()
   if (warmup) {
     for (auto& entry : RQ) {
       if (entry.has_value()) {
-        response_type response{entry->address, entry->v_address, entry->data, entry->pf_metadata, entry->instr_depend_on_me};
+        response_type response{entry->address, entry->v_address, entry->data, entry->pf_metadata, entry->instr_depend_on_me
+      #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                   , entry->page_size, entry->base_vpn
+      #endif
+        };
         for (auto* ret : entry.value().to_return) {
           ret->push_back(response);
         }
@@ -146,7 +150,11 @@ long DRAM_CHANNEL::finish_dbus_request()
 
   if (active_request != std::end(bank_request) && active_request->ready_time <= current_time) {
     response_type response{active_request->pkt->value().address, active_request->pkt->value().v_address, active_request->pkt->value().data,
-                           active_request->pkt->value().pf_metadata, active_request->pkt->value().instr_depend_on_me};
+                 active_request->pkt->value().pf_metadata, active_request->pkt->value().instr_depend_on_me
+  #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                 , active_request->pkt->value().page_size, active_request->pkt->value().base_vpn
+  #endif
+    };
     for (auto* ret : active_request->pkt->value().to_return) {
       ret->push_back(response);
     }
@@ -453,7 +461,11 @@ void DRAM_CHANNEL::check_read_collision()
       // write forward
       if (auto wq_it = std::find_if(std::begin(WQ), std::end(WQ), checker); wq_it != std::end(WQ)) {
         response_type response{rq_it->value().address, rq_it->value().v_address, wq_it->value().data, rq_it->value().pf_metadata,
-                               rq_it->value().instr_depend_on_me};
+                   rq_it->value().instr_depend_on_me
+      #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                   , rq_it->value().page_size, rq_it->value().base_vpn
+      #endif
+        };
         for (auto* ret : rq_it->value().to_return) {
           ret->push_back(response);
         }
@@ -512,6 +524,12 @@ DRAM_CHANNEL::request_type::request_type(const typename champsim::channel::reque
 {
   asid[0] = req.asid[0];
   asid[1] = req.asid[1];
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  page_size = req.page_size;
+  base_vpn = req.base_vpn;
+  v_address = req.v_address;
+#endif
 }
 
 bool MEMORY_CONTROLLER::add_rq(const request_type& packet, champsim::channel* ul)

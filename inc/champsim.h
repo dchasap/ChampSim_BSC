@@ -30,6 +30,12 @@
 #define ENABLE_FDIP
 #define ENABLE_PAGE_CROSSING_STATS
 #define EXPAND_PACKET
+#define ENABLE_MULTIPLE_PAGE_SIZE
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+inline constexpr unsigned LARGE_PAGE_SIZE = 2 * 1024 * 1024;
+inline constexpr unsigned LOG2_LARGE_PAGE_SIZE = 21;
+#endif
 
 extern const std::size_t NUM_CPUS;
 extern const unsigned BLOCK_SIZE;

@@ -29,8 +29,11 @@
 #include <memory>
 #include <optional>
 #include <queue>
+#include <random>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "bandwidth.h"
@@ -75,7 +78,7 @@ struct LSQ_ENTRY : champsim::program_ordered<LSQ_ENTRY> {
   std::array<uint8_t, 2> asid = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
   bool fetch_issued = false;
 
-#if defined(EXPAND_PACKET)
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   uint32_t page_size = 0;
   uint64_t base_vpn = 0;
 #endif
@@ -153,6 +156,21 @@ public:
 
   CacheBus L1I_bus, L1D_bus;
   CACHE* l1i;
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  int instr_page_size_dist = 0;
+  int data_page_size_dist = 0;
+  std::string instr_page_dist_filename;
+  std::string data_page_dist_filename;
+  std::unordered_map<uint64_t, uint8_t> code_page_sizes;
+  std::unordered_map<uint64_t, uint8_t> data_page_sizes;
+  std::mt19937 page_size_rng{};
+  std::uniform_int_distribution<int> page_size_roll{0, 99};
+
+  void load_page_size_assignments(const std::string& filename, std::unordered_map<uint64_t, uint8_t>& table);
+  void save_page_size_assignments(const std::string& filename, const std::unordered_map<uint64_t, uint8_t>& table) const;
+  std::pair<uint32_t, uint64_t> classify_page(champsim::address addr, bool is_instruction);
+#endif
 
 #if defined(ENABLE_FDIP)
   FDIP fdip = FDIP(16);
