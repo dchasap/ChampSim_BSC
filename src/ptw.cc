@@ -229,6 +229,11 @@ void PageTableWalker::finish_packet(const response_type& packet)
     return champsim::block_number{x.address} == block;
   };
   auto is_last_step = [](auto x) {
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    if (x.page_size == 2) {
+      return x.translation_level <= 1;
+    }
+#endif
     return x.translation_level <= 0;
   };
   auto last_finished = std::partition(std::begin(MSHR), std::end(MSHR), matches_addr);

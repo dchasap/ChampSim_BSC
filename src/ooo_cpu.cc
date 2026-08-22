@@ -1019,13 +1019,22 @@ std::pair<uint32_t, uint64_t> O3_CPU::classify_page(champsim::address addr, bool
   }
 
   // Then check large page key
-  if (auto it = table.find(large_key); it != table.end() && it->second == LARGE_PAGE_CLASS) {
-    if (is_instruction) {
-      ++sim_stats.instr_large_page_accesses;
-    } else {
-      ++sim_stats.data_large_page_accesses;
+  if (auto it = table.find(large_key); it != table.end()) {
+    if (it->second == LARGE_PAGE_CLASS) {
+      if (is_instruction) {
+        ++sim_stats.instr_large_page_accesses;
+      } else {
+        ++sim_stats.data_large_page_accesses;
+      }
+      return {LARGE_PAGE_CLASS, large_key};
+    } else if (it->second == SMALL_PAGE_CLASS) {
+      if (is_instruction) {
+        ++sim_stats.instr_small_page_accesses;
+      } else {
+        ++sim_stats.data_small_page_accesses;
+      }
+      return {SMALL_PAGE_CLASS, small_key};
     }
-    return {LARGE_PAGE_CLASS, large_key};
   }
 
   const int ratio = is_instruction ? instr_page_size_dist : data_page_size_dist;
@@ -1040,7 +1049,7 @@ std::pair<uint32_t, uint64_t> O3_CPU::classify_page(champsim::address addr, bool
     return {LARGE_PAGE_CLASS, large_key};
   }
 
-  table[small_key] = static_cast<uint8_t>(SMALL_PAGE_CLASS);
+  table[large_key] = static_cast<uint8_t>(SMALL_PAGE_CLASS);
   if (is_instruction) {
     ++sim_stats.instr_small_page_accesses;
   } else {
