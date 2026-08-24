@@ -174,6 +174,8 @@ auto CACHE::fill_block(fill_type fill, uint32_t metadata) -> BLOCK
   to_fill.is_instr = fill.is_instr;
   to_fill.is_pte = fill.is_pte;
   to_fill.pte_level = static_cast<uint8_t>(fill.translation_level);
+#endif
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   to_fill.page_size = fill.page_size;
   to_fill.base_vpn = fill.base_vpn;
 #endif
@@ -231,6 +233,8 @@ bool CACHE::handle_fill(const fill_type& fill)
 #if defined(EXPAND_PACKET)
     writeback_packet.is_instr = way->is_instr;
     writeback_packet.is_pte = way->is_pte;
+#endif
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     writeback_packet.page_size = way->page_size;
     writeback_packet.base_vpn = way->base_vpn;
 #endif
@@ -310,6 +314,23 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   // access cache
   auto [set_begin, set_end] = get_set_span(handle_pkt.address);
   auto way = std::find_if(set_begin, set_end, [matcher = matches_address(handle_pkt.address)](const auto& x) { return x.valid && matcher(x); });
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  // A single large-page TLB entry covers every 4KB page of its 2MB region, so a lookup for any page of that
+  // region must be served by the same entry. The regular tags are 4KB-granular, so scan the entire TLB for an
+  // entry belonging to the same region (same base VPN), as done in ChampSim_old.
+  bool large_page_hit = false;
+  if (way == set_end && handle_pkt.page_size == 2 && NAME.find("TLB") != std::string::npos) {
+    auto scan_way = std::find_if(std::begin(block), std::end(block),
+                                 [bvpn = handle_pkt.base_vpn](const auto& x) { return x.valid && x.page_size == 2 && x.base_vpn == bvpn; });
+    if (scan_way != std::end(block)) {
+      way = scan_way;
+      large_page_hit = true;
+    }
+    // NOTE: if the scan finds nothing, 'way' must remain set_end so the request is treated as a miss.
+  }
+#endif
+
   const auto hit = (way != set_end);
   const auto useful_prefetch = (hit && way->prefetch && !handle_pkt.prefetch_from_this);
 
@@ -320,6 +341,12 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   }
 
   auto metadata_thru = handle_pkt.pf_metadata;
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  // Hits resolved by the large-page region scan did not go through the normal set/way path, so skip the
+  // prefetcher and replacement updates for them.
+  if (!large_page_hit) {
+#endif
+  // update prefetcher
   if (should_activate_prefetcher(handle_pkt)) {
     metadata_thru = impl_prefetcher_cache_operate(module_address(handle_pkt), handle_pkt.ip, hit, useful_prefetch, handle_pkt.type, metadata_thru);
   }
@@ -328,6 +355,9 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   const auto way_idx = std::distance(set_begin, way);
   impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
                                 hit);
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  }
+#endif
 
   if (hit) {
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
@@ -759,25 +789,21 @@ void CACHE::finish_packet(const response_type& packet)
 void CACHE::finish_translation(const response_type& packet)
 {
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
-  auto matches_vpage = [&packet, this](const auto& entry) {
+  auto matches_vpage = [&packet](const auto& entry) {
     if (entry.is_translated) {
       return false;
     }
 
-    bool match = false;
-    // If entry has page_size == 0 (no metadata, e.g., from prefetch), match by vpage only
-    if (entry.page_size == 0) {
-      auto page_num = champsim::page_number{packet.v_address};
-      match = champsim::page_number{entry.v_address} == page_num;
-    } else if (packet.page_size == 2) {
-      match = entry.page_size == 2 && entry.base_vpn == packet.base_vpn;
-    } else if (packet.page_size == 1) {
-      match = entry.page_size == 1 && entry.base_vpn == packet.base_vpn;
-    } else {
-      auto page_num = champsim::page_number{packet.v_address};
-      match = champsim::page_number{entry.v_address} == page_num;
+    // Primary rule: always match entries that target the same virtual page as the
+    // returned translation. This guarantees that every issued translation request is
+    // satisfied by its own response and can never be stranded (which would deadlock).
+    if (champsim::page_number{entry.v_address} == champsim::page_number{packet.v_address}) {
+      return true;
     }
-    return match;
+
+    // Secondary rule: a single large-page translation covers every 4KB page in its
+    // 2MB region, so release neighboring entries that belong to the same region.
+    return packet.page_size == 2 && entry.page_size == 2 && entry.base_vpn == packet.base_vpn;
   };
 
   auto mark_translated = [&packet, this](auto& entry) {

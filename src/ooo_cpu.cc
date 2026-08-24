@@ -51,6 +51,20 @@ int clamp_ratio(int x)
   }
   return x;
 }
+
+std::size_t count_large_pages(const std::unordered_map<uint64_t, uint8_t>& table)
+{
+  return static_cast<std::size_t>(
+      std::count_if(std::begin(table), std::end(table), [](const auto& kv) { return kv.second == LARGE_PAGE_CLASS; }));
+}
+
+unsigned percent_large_pages(const std::unordered_map<uint64_t, uint8_t>& table)
+{
+  if (table.empty()) {
+    return 0;
+  }
+  return static_cast<unsigned>((100 * count_large_pages(table)) / table.size());
+}
 } // namespace
 #endif
 
@@ -94,10 +108,18 @@ void O3_CPU::initialize()
   if (auto file = champsim::EnvVar<std::string>::get("INSTR_PAGE_DIST_FILENAME")) {
     instr_page_dist_filename = *file;
     load_page_size_assignments(instr_page_dist_filename, code_page_sizes);
+    if (!code_page_sizes.empty()) {
+      fmt::print("[CPU{}] NOTE: loaded {} instruction page assignments from {} ({}% large); these override INSTR_PAGE_SIZE_DIST={}%.\n", cpu,
+                 code_page_sizes.size(), instr_page_dist_filename, percent_large_pages(code_page_sizes), instr_page_size_dist);
+    }
   }
   if (auto file = champsim::EnvVar<std::string>::get("DATA_PAGE_DIST_FILENAME")) {
     data_page_dist_filename = *file;
     load_page_size_assignments(data_page_dist_filename, data_page_sizes);
+    if (!data_page_sizes.empty()) {
+      fmt::print("[CPU{}] NOTE: loaded {} data page assignments from {} ({}% large); these override DATA_PAGE_SIZE_DIST={}%.\n", cpu,
+                 data_page_sizes.size(), data_page_dist_filename, percent_large_pages(data_page_sizes), data_page_size_dist);
+    }
   }
 
   fmt::print("[CPU{}] Instruction large-page ratio: {}%\n", cpu, instr_page_size_dist);
@@ -134,9 +156,13 @@ void O3_CPU::end_phase(unsigned finished_cpu)
     if (!warmup) {
       if (!instr_page_dist_filename.empty()) {
         save_page_size_assignments(instr_page_dist_filename, code_page_sizes);
+        fmt::print("[CPU{}] Final instruction page mapping: {} regions, {}% large (requested {}%)\n", cpu, code_page_sizes.size(),
+                   percent_large_pages(code_page_sizes), instr_page_size_dist);
       }
       if (!data_page_dist_filename.empty()) {
         save_page_size_assignments(data_page_dist_filename, data_page_sizes);
+        fmt::print("[CPU{}] Final data page mapping: {} regions, {}% large (requested {}%)\n", cpu, data_page_sizes.size(),
+                   percent_large_pages(data_page_sizes), data_page_size_dist);
       }
     }
 #endif
@@ -1005,42 +1031,18 @@ std::pair<uint32_t, uint64_t> O3_CPU::classify_page(champsim::address addr, bool
   auto& table = is_instruction ? code_page_sizes : data_page_sizes;
   const auto raw_addr = addr.to<uint64_t>();
   const uint64_t large_key = raw_addr >> LOG2_LARGE_PAGE_SIZE;
-  const uint64_t small_key = raw_addr >> LOG2_PAGE_SIZE;
 
-  // Check small page key FIRST - once a specific 4KB page is classified, 
-  // it should stay that way even if the encompassing 2MB region is later classified
-  if (auto it = table.find(small_key); it != table.end() && it->second == SMALL_PAGE_CLASS) {
-    if (is_instruction) {
-      ++sim_stats.instr_small_page_accesses;
-    } else {
-      ++sim_stats.data_small_page_accesses;
-    }
-    return {SMALL_PAGE_CLASS, small_key};
+  // The page size decision is made exactly once per 2MB region and stored under its
+  // large_key only. Using a single key granularity guarantees there are no key
+  // aliasing collisions between 4KB and 2MB indices in the flat map.
+  auto it = table.find(large_key);
+  if (it == table.end()) {
+    const int ratio = is_instruction ? instr_page_size_dist : data_page_size_dist;
+    const bool large = page_size_roll(page_size_rng) < ratio;
+    it = table.emplace(large_key, static_cast<uint8_t>(large ? LARGE_PAGE_CLASS : SMALL_PAGE_CLASS)).first;
   }
 
-  // Then check large page key
-  if (auto it = table.find(large_key); it != table.end()) {
-    if (it->second == LARGE_PAGE_CLASS) {
-      if (is_instruction) {
-        ++sim_stats.instr_large_page_accesses;
-      } else {
-        ++sim_stats.data_large_page_accesses;
-      }
-      return {LARGE_PAGE_CLASS, large_key};
-    } else if (it->second == SMALL_PAGE_CLASS) {
-      if (is_instruction) {
-        ++sim_stats.instr_small_page_accesses;
-      } else {
-        ++sim_stats.data_small_page_accesses;
-      }
-      return {SMALL_PAGE_CLASS, small_key};
-    }
-  }
-
-  const int ratio = is_instruction ? instr_page_size_dist : data_page_size_dist;
-  const bool large = page_size_roll(page_size_rng) < ratio;
-  if (large) {
-    table[large_key] = static_cast<uint8_t>(LARGE_PAGE_CLASS);
+  if (it->second == LARGE_PAGE_CLASS) {
     if (is_instruction) {
       ++sim_stats.instr_large_page_accesses;
     } else {
@@ -1049,12 +1051,11 @@ std::pair<uint32_t, uint64_t> O3_CPU::classify_page(champsim::address addr, bool
     return {LARGE_PAGE_CLASS, large_key};
   }
 
-  table[large_key] = static_cast<uint8_t>(SMALL_PAGE_CLASS);
   if (is_instruction) {
     ++sim_stats.instr_small_page_accesses;
   } else {
     ++sim_stats.data_small_page_accesses;
   }
-  return {SMALL_PAGE_CLASS, small_key};
+  return {SMALL_PAGE_CLASS, raw_addr >> LOG2_PAGE_SIZE};
 }
 #endif
