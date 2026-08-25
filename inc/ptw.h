@@ -69,6 +69,10 @@ class PageTableWalker : public champsim::operable
     uint64_t base_vpn = 0;
   #endif
 
+  #if defined(EXPAND_PACKET)
+    bool is_instr = false;
+  #endif
+
     mshr_type(const request_type& req, std::size_t level);
   };
 

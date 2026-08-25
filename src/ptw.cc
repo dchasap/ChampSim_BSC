@@ -56,6 +56,10 @@ PageTableWalker::mshr_type::mshr_type(const request_type& req, std::size_t level
   page_size = req.page_size;
   base_vpn = req.base_vpn;
 #endif
+
+#if defined(EXPAND_PACKET)
+  is_instr = req.is_instr;
+#endif
 }
 
 auto PageTableWalker::handle_read(const request_type& handle_pkt, channel_type* ul) -> std::optional<mshr_type>
@@ -119,6 +123,7 @@ auto PageTableWalker::step_translation(const mshr_type& source) -> std::optional
 #if defined(EXPAND_PACKET)
   packet.is_pte = true;
   packet.translation_level = source.translation_level;
+  packet.is_instr = source.is_instr;
 
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   packet.page_size = source.page_size;

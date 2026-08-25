@@ -15,6 +15,7 @@
  */
 
 #include <cmath>
+#include <cstdio>
 #include <numeric>
 #include <ratio>
 #include <string_view> // for string_view
@@ -24,10 +25,20 @@
 #include <fmt/core.h>
 #include <fmt/ostream.h>
 
+#include "champsim.h"
 #include "stats_printer.h"
 
 namespace
 {
+const bool printer_macro_banner = []() {
+#if defined(EXPAND_PACKET)
+  std::puts("[PRINTER] plain_printer compiled with EXPAND_PACKET");
+#else
+  std::puts("[PRINTER] plain_printer compiled WITHOUT EXPAND_PACKET");
+#endif
+  return true;
+}();
+
 template <typename N, typename D>
 auto print_ratio(N num, D denom)
 {
@@ -116,7 +127,29 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
 
     fmt::format_string<std::string_view, std::string_view, int, int, int> hitmiss_fmtstr{
         "cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d} MISS_MERGE: {:10d}"};
+#if defined(EXPAND_PACKET)
+    std::cout << "EXPAND_PACKET is defined, mimicking ChampSim_old plain_printer: categorized i/d/it/dt columns inline on the TOTAL row" << std::endl;
+    // Mimic ChampSim_old plain_printer: categorized i/d/it/dt columns inline on the TOTAL row
+    auto i_access = stats.ihits.value_or(cpu, 0) + stats.imisses.value_or(cpu, 0);
+    auto d_access = stats.dhits.value_or(cpu, 0) + stats.dmisses.value_or(cpu, 0);
+    auto it_access = stats.ithits.value_or(cpu, 0) + stats.itmisses.value_or(cpu, 0);
+    auto dt_access = stats.dthits.value_or(cpu, 0) + stats.dtmisses.value_or(cpu, 0);
+
+    lines.push_back(
+        fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d}  HIT: {:10d}  MISS: {:10d} MISS_MERGE: {:10d}"
+                    "  iACCESS: {:10d}  iHIT: {:10d}  iMISS: {:10d}"
+                    "  dACCESS: {:10d}  dHIT: {:10d}  dMISS: {:10d}"
+                    "  itACCESS: {:10d}  itHIT: {:10d}  itMISS: {:10d}"
+                    "  dtACCESS: {:10d}  dtHIT: {:10d}  dtMISS: {:10d}",
+                    cpu, stats.name, "TOTAL", total_hits + total_misses, total_hits, total_misses, total_miss_merge,
+                    i_access, stats.ihits.value_or(cpu, 0), stats.imisses.value_or(cpu, 0),
+                    d_access, stats.dhits.value_or(cpu, 0), stats.dmisses.value_or(cpu, 0), it_access, stats.ithits.value_or(cpu, 0),
+                    stats.itmisses.value_or(cpu, 0), dt_access, stats.dthits.value_or(cpu, 0), stats.dtmisses.value_or(cpu, 0)));
+#else
+    std::cout << "EXPAND_PACKET is NOT defined, using a single TOTAL row" << std::endl;
     lines.push_back(fmt::format(hitmiss_fmtstr, cpu, stats.name, "TOTAL", total_hits + total_misses, total_hits, total_misses, total_miss_merge));
+#endif
+
     for (const auto type : {access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION}) {
       lines.push_back(
           fmt::format(hitmiss_fmtstr, cpu, stats.name, access_type_names.at(champsim::to_underlying(type)),
@@ -133,35 +166,16 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
     lines.push_back(fmt::format("cpu{}->{} PAGE CROSSINGS (TLB MISS): {:10}", cpu, stats.name, stats.pf_crossing_pages_tlb_miss));
 #endif
 
-#if defined(EXPAND_PACKET)
-    // Categorized statistics: i=instr, d=data, it=instr TLB, dt=data TLB
-    auto i_access = stats.ihits.value_or(cpu, 0) + stats.imisses.value_or(cpu, 0);
-    auto d_access = stats.dhits.value_or(cpu, 0) + stats.dmisses.value_or(cpu, 0);
-    auto it_access = stats.ithits.value_or(cpu, 0) + stats.itmisses.value_or(cpu, 0);
-    auto dt_access = stats.dthits.value_or(cpu, 0) + stats.dtmisses.value_or(cpu, 0);
-
-    if (i_access > 0)
-      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "i", i_access, stats.ihits.value_or(cpu, 0), stats.imisses.value_or(cpu, 0)));
-    if (d_access > 0)
-      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "d", d_access, stats.dhits.value_or(cpu, 0), stats.dmisses.value_or(cpu, 0)));
-    if (it_access > 0)
-      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "it", it_access, stats.ithits.value_or(cpu, 0), stats.itmisses.value_or(cpu, 0)));
-    if (dt_access > 0)
-      lines.push_back(fmt::format("cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d}", cpu, stats.name, "dt", dt_access, stats.dthits.value_or(cpu, 0), stats.dtmisses.value_or(cpu, 0)));
-
-    if (stats.imisses.value_or(cpu, 0) > 0)
-      lines.push_back(fmt::format("cpu{}->{} AVERAGE i MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_imiss_latency, stats.imisses.value_or(cpu, 0))));
-    if (stats.dmisses.value_or(cpu, 0) > 0)
-      lines.push_back(fmt::format("cpu{}->{} AVERAGE d MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_dmiss_latency, stats.dmisses.value_or(cpu, 0))));
-    if (stats.itmisses.value_or(cpu, 0) > 0)
-      lines.push_back(fmt::format("cpu{}->{} AVERAGE it MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_itmiss_latency, stats.itmisses.value_or(cpu, 0))));
-    if (stats.dtmisses.value_or(cpu, 0) > 0)
-      lines.push_back(fmt::format("cpu{}->{} AVERAGE dt MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_dtmiss_latency, stats.dtmisses.value_or(cpu, 0))));
-#endif
-
     uint64_t total_downstream_demands = total_fill - stats.fill.value_or(std::pair{access_type::PREFETCH, cpu}, fill_value_type{});
     lines.push_back(
         fmt::format("cpu{}->{} AVERAGE MISS LATENCY: {} cycles", cpu, stats.name, ::print_ratio(stats.total_miss_latency_cycles, total_downstream_demands)));
+  #if defined(EXPAND_PACKET)
+    // Mimic ChampSim_old plain_printer latency labels (AVERAGE iMISS/dMISS/itMISS/dtMISS LATENCY)
+    lines.push_back(fmt::format("{} AVERAGE iMISS LATENCY: {} cycles", stats.name, ::print_ratio(stats.total_imiss_latency, total_misses)));
+    lines.push_back(fmt::format("{} AVERAGE dMISS LATENCY: {} cycles", stats.name, ::print_ratio(stats.total_dmiss_latency, total_misses)));
+    lines.push_back(fmt::format("{} AVERAGE itMISS LATENCY: {} cycles", stats.name, ::print_ratio(stats.total_itmiss_latency, total_misses)));
+    lines.push_back(fmt::format("{} AVERAGE dtMISS LATENCY: {} cycles", stats.name, ::print_ratio(stats.total_dtmiss_latency, total_misses)));
+  #endif
   }
 
   return lines;

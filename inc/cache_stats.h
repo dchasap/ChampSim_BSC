@@ -31,9 +31,11 @@ struct cache_stats {
 #endif
 
 #if defined(EXPAND_PACKET)
-  // Categorized hit/miss statistics
-  // i = instruction (non-TLB), d = data (non-TLB)
-  // it = instruction TLB, dt = data TLB
+  // Categorized hit/miss statistics. NOTE: these match ChampSim_old's hit_hook/miss_hook semantics:
+  //   i  = instruction access, NOT a page-table entry (TLB lookups themselves fall here)
+  //   d  = data access, NOT a page-table entry (TLB lookups themselves fall here)
+  //   it = instruction page-table walk access (is_instr && is_pte)
+  //   dt = data page-table walk access (!is_instr && is_pte)
   champsim::stats::event_counter<std::remove_cv_t<decltype(NUM_CPUS)>> ihits = {};
   champsim::stats::event_counter<std::remove_cv_t<decltype(NUM_CPUS)>> imisses = {};
   champsim::stats::event_counter<std::remove_cv_t<decltype(NUM_CPUS)>> dhits = {};

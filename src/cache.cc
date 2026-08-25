@@ -103,6 +103,7 @@ CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref
 #if defined(EXPAND_PACKET)
   is_instr = req.is_instr;
   is_pte = req.is_pte;
+  translation_level = req.translation_level;
 #endif
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   page_size = req.page_size;
@@ -363,7 +364,9 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
     sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
 
 #if defined(EXPAND_PACKET)
-    // Categorize hits: i=instr, d=data, it=instr TLB, dt=data TLB
+    // Categorize hits: i/d = instr/data non-PTE access, it/dt = instr/data PTE (page-walk) access.
+    // Every hit is categorized (including PREFETCH/WRITE), matching ChampSim_old's unconditional
+    // hit_hook(), so that i+d+it+dt == total hits exactly.
     if (handle_pkt.is_pte) {
       if (handle_pkt.is_instr) {
         sim_stats.ithits.increment(handle_pkt.cpu);
@@ -435,6 +438,10 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
   fwd_pkt.base_vpn = handle_pkt.base_vpn;
 #endif
 #if defined(EXPAND_PACKET)
+  // Carry the expanded classification so lower levels can categorize i/d/it/dt correctly,
+  // and so page-table walks keep their is_pte flag and walk level across hops.
+  fwd_pkt.is_instr = handle_pkt.is_instr;
+  fwd_pkt.is_pte = handle_pkt.is_pte;
   fwd_pkt.translation_level = handle_pkt.translation_level;
 #endif
 
@@ -502,7 +509,9 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
 
 #if defined(EXPAND_PACKET)
-  // Categorize misses: i=instr, d=data, it=instr TLB, dt=data TLB
+  // Categorize misses: i/d = instr/data non-PTE access, it/dt = instr/data PTE (page-walk) access.
+  // Every miss is categorized (including PREFETCH), matching ChampSim_old's unconditional
+  // miss_hook(), so that i+d+it+dt == total misses exactly.
   if (handle_pkt.is_pte) {
     if (handle_pkt.is_instr) {
       sim_stats.itmisses.increment(handle_pkt.cpu);
@@ -534,6 +543,24 @@ bool CACHE::handle_write(const tag_lookup_type& handle_pkt)
   inflight_fills.push_back(to_allocate);
 
   sim_stats.misses.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+
+#if defined(EXPAND_PACKET)
+  // Categorize writeback misses like every other miss site so that i+d+it+dt == total misses.
+  // Writeback packets carry the classification of the evicted line (copied in handle_fill()).
+  if (handle_pkt.is_pte) {
+    if (handle_pkt.is_instr) {
+      sim_stats.itmisses.increment(handle_pkt.cpu);
+    } else {
+      sim_stats.dtmisses.increment(handle_pkt.cpu);
+    }
+  } else {
+    if (handle_pkt.is_instr) {
+      sim_stats.imisses.increment(handle_pkt.cpu);
+    } else {
+      sim_stats.dmisses.increment(handle_pkt.cpu);
+    }
+  }
+#endif
 
   return true;
 }
@@ -742,6 +769,7 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
   if (NAME.find("L1I") != std::string::npos) {
     pf_packet.is_instr = true;
   }
+  // is_pte stays false: matches ChampSim_old, where only page-table-walk accesses carry is_pte.
 #endif
 
   internal_PQ.emplace_back(pf_packet, true, !fill_this_level);
@@ -876,6 +904,14 @@ void CACHE::issue_translation(tag_lookup_type& q_entry) const
   #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     fwd_pkt.page_size = q_entry.page_size;
     fwd_pkt.base_vpn = q_entry.base_vpn;
+  #endif
+
+  #if defined(EXPAND_PACKET)
+    // Match ChampSim_old's TranslatingQueues::do_issue_translation, which forwards the packet with
+    // its flags intact: TLB lookups for ordinary instruction/data accesses are counted under i/d,
+    // while page-table-walk accesses keep is_pte=true (set by the PTW) and are counted under it/dt.
+    fwd_pkt.is_pte = q_entry.is_pte;
+    fwd_pkt.is_instr = q_entry.is_instr;
   #endif
 
     q_entry.translate_issued = lower_translate->add_rq(fwd_pkt);
@@ -1040,6 +1076,12 @@ void CACHE::initialize()
 {
   impl_prefetcher_initialize();
   impl_initialize_replacement();
+
+#if defined(EXPAND_PACKET)
+  fmt::print("[CACHE {}] compiled with EXPAND_PACKET\n", NAME);
+#else
+  fmt::print("[CACHE {}] compiled WITHOUT EXPAND_PACKET\n", NAME);
+#endif
 }
 
 void CACHE::begin_phase()
@@ -1080,6 +1122,62 @@ void CACHE::end_phase(unsigned finished_cpu)
 #if defined(ENABLE_PAGE_CROSSING_STATS)
   roi_stats.pf_crossing_pages_tlb_hit = sim_stats.pf_crossing_pages_tlb_hit;
   roi_stats.pf_crossing_pages_tlb_miss = sim_stats.pf_crossing_pages_tlb_miss;
+#endif
+
+#if defined(EXPAND_PACKET)
+  // Categorized demand statistics: i=instr, d=data, it=instr TLB, dt=data TLB
+  roi_stats.ihits = sim_stats.ihits;
+  roi_stats.imisses = sim_stats.imisses;
+  roi_stats.dhits = sim_stats.dhits;
+  roi_stats.dmisses = sim_stats.dmisses;
+  roi_stats.ithits = sim_stats.ithits;
+  roi_stats.itmisses = sim_stats.itmisses;
+  roi_stats.dthits = sim_stats.dthits;
+  roi_stats.dtmisses = sim_stats.dtmisses;
+
+  roi_stats.total_imiss_latency = sim_stats.total_imiss_latency;
+  roi_stats.total_dmiss_latency = sim_stats.total_dmiss_latency;
+  roi_stats.total_itmiss_latency = sim_stats.total_itmiss_latency;
+  roi_stats.total_dtmiss_latency = sim_stats.total_dtmiss_latency;
+
+  // DEBUG: always report the collected counters at the collection site
+  auto sum_cpu = [](const auto& c) {
+    unsigned total = 0;
+    for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu) {
+      total += static_cast<unsigned>(c.value_or(cpu, 0));
+    }
+    return total;
+  };
+  fmt::print("[STATS] {} end_phase EXPAND=on: i hit/miss = {}/{}, d hit/miss = {}/{}, it hit/miss = {}/{}, dt hit/miss = {}/{}\n", NAME,
+             sum_cpu(sim_stats.ihits), sum_cpu(sim_stats.imisses), sum_cpu(sim_stats.dhits), sum_cpu(sim_stats.dmisses), sum_cpu(sim_stats.ithits),
+             sum_cpu(sim_stats.itmisses), sum_cpu(sim_stats.dthits), sum_cpu(sim_stats.dtmisses));
+
+  // DEBUG: reconcile categorized counters against the plain hits/misses counters.
+  // Expected identity now that every site categorizes (including PREFETCH and writebacks):
+  //   i+d+it+dt (hit+miss) == total(hits+misses)
+  auto sum_type = [](const auto& counter, access_type type) {
+    unsigned long long total = 0;
+    for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu) {
+      total += counter.value_or(std::pair{type, cpu}, 0ULL);
+    }
+    return total;
+  };
+  unsigned long long tot_hits = 0, tot_misses = 0;
+  for (auto type : {access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION}) {
+    tot_hits += sum_type(sim_stats.hits, type);
+    tot_misses += sum_type(sim_stats.misses, type);
+  }
+  auto pf_hits = sum_type(sim_stats.hits, access_type::PREFETCH);
+  auto pf_misses = sum_type(sim_stats.misses, access_type::PREFETCH);
+  auto wr_hits = sum_type(sim_stats.hits, access_type::WRITE);
+  auto wr_misses = sum_type(sim_stats.misses, access_type::WRITE);
+  auto cat_sum = sum_cpu(sim_stats.ihits) + sum_cpu(sim_stats.imisses) + sum_cpu(sim_stats.dhits) + sum_cpu(sim_stats.dmisses) + sum_cpu(sim_stats.ithits)
+                 + sum_cpu(sim_stats.itmisses) + sum_cpu(sim_stats.dthits) + sum_cpu(sim_stats.dtmisses);
+  fmt::print("[STATS] {} end_phase RECONCILE: total hits+misses = {}, categorized i/d/it/dt sum = {}, prefetch hit/miss = {}/{}, write hit/miss = {}/{} "
+             "(all sites categorize, so the two sums must match)\n",
+             NAME, tot_hits + tot_misses, cat_sum, pf_hits, pf_misses, wr_hits, wr_misses);
+#else
+  fmt::print("[STATS] {} end_phase: EXPAND_PACKET was NOT defined when cache.cc was compiled\n", NAME);
 #endif
 
   for (auto* ul : upper_levels) {
