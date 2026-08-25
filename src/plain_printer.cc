@@ -30,14 +30,6 @@
 
 namespace
 {
-const bool printer_macro_banner = []() {
-#if defined(EXPAND_PACKET)
-  std::puts("[PRINTER] plain_printer compiled with EXPAND_PACKET");
-#else
-  std::puts("[PRINTER] plain_printer compiled WITHOUT EXPAND_PACKET");
-#endif
-  return true;
-}();
 
 template <typename N, typename D>
 auto print_ratio(N num, D denom)
@@ -128,7 +120,6 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
     fmt::format_string<std::string_view, std::string_view, int, int, int> hitmiss_fmtstr{
         "cpu{}->{} {:<12s} ACCESS: {:10d} HIT: {:10d} MISS: {:10d} MISS_MERGE: {:10d}"};
 #if defined(EXPAND_PACKET)
-    std::cout << "EXPAND_PACKET is defined, mimicking ChampSim_old plain_printer: categorized i/d/it/dt columns inline on the TOTAL row" << std::endl;
     // Mimic ChampSim_old plain_printer: categorized i/d/it/dt columns inline on the TOTAL row
     auto i_access = stats.ihits.value_or(cpu, 0) + stats.imisses.value_or(cpu, 0);
     auto d_access = stats.dhits.value_or(cpu, 0) + stats.dmisses.value_or(cpu, 0);
@@ -146,7 +137,6 @@ std::vector<std::string> champsim::plain_printer::format(CACHE::stats_type stats
                     d_access, stats.dhits.value_or(cpu, 0), stats.dmisses.value_or(cpu, 0), it_access, stats.ithits.value_or(cpu, 0),
                     stats.itmisses.value_or(cpu, 0), dt_access, stats.dthits.value_or(cpu, 0), stats.dtmisses.value_or(cpu, 0)));
 #else
-    std::cout << "EXPAND_PACKET is NOT defined, using a single TOTAL row" << std::endl;
     lines.push_back(fmt::format(hitmiss_fmtstr, cpu, stats.name, "TOTAL", total_hits + total_misses, total_hits, total_misses, total_miss_merge));
 #endif
 

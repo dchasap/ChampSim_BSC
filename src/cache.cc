@@ -1076,12 +1076,6 @@ void CACHE::initialize()
 {
   impl_prefetcher_initialize();
   impl_initialize_replacement();
-
-#if defined(EXPAND_PACKET)
-  fmt::print("[CACHE {}] compiled with EXPAND_PACKET\n", NAME);
-#else
-  fmt::print("[CACHE {}] compiled WITHOUT EXPAND_PACKET\n", NAME);
-#endif
 }
 
 void CACHE::begin_phase()
@@ -1139,45 +1133,6 @@ void CACHE::end_phase(unsigned finished_cpu)
   roi_stats.total_dmiss_latency = sim_stats.total_dmiss_latency;
   roi_stats.total_itmiss_latency = sim_stats.total_itmiss_latency;
   roi_stats.total_dtmiss_latency = sim_stats.total_dtmiss_latency;
-
-  // DEBUG: always report the collected counters at the collection site
-  auto sum_cpu = [](const auto& c) {
-    unsigned total = 0;
-    for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu) {
-      total += static_cast<unsigned>(c.value_or(cpu, 0));
-    }
-    return total;
-  };
-  fmt::print("[STATS] {} end_phase EXPAND=on: i hit/miss = {}/{}, d hit/miss = {}/{}, it hit/miss = {}/{}, dt hit/miss = {}/{}\n", NAME,
-             sum_cpu(sim_stats.ihits), sum_cpu(sim_stats.imisses), sum_cpu(sim_stats.dhits), sum_cpu(sim_stats.dmisses), sum_cpu(sim_stats.ithits),
-             sum_cpu(sim_stats.itmisses), sum_cpu(sim_stats.dthits), sum_cpu(sim_stats.dtmisses));
-
-  // DEBUG: reconcile categorized counters against the plain hits/misses counters.
-  // Expected identity now that every site categorizes (including PREFETCH and writebacks):
-  //   i+d+it+dt (hit+miss) == total(hits+misses)
-  auto sum_type = [](const auto& counter, access_type type) {
-    unsigned long long total = 0;
-    for (std::size_t cpu = 0; cpu < NUM_CPUS; ++cpu) {
-      total += counter.value_or(std::pair{type, cpu}, 0ULL);
-    }
-    return total;
-  };
-  unsigned long long tot_hits = 0, tot_misses = 0;
-  for (auto type : {access_type::LOAD, access_type::RFO, access_type::PREFETCH, access_type::WRITE, access_type::TRANSLATION}) {
-    tot_hits += sum_type(sim_stats.hits, type);
-    tot_misses += sum_type(sim_stats.misses, type);
-  }
-  auto pf_hits = sum_type(sim_stats.hits, access_type::PREFETCH);
-  auto pf_misses = sum_type(sim_stats.misses, access_type::PREFETCH);
-  auto wr_hits = sum_type(sim_stats.hits, access_type::WRITE);
-  auto wr_misses = sum_type(sim_stats.misses, access_type::WRITE);
-  auto cat_sum = sum_cpu(sim_stats.ihits) + sum_cpu(sim_stats.imisses) + sum_cpu(sim_stats.dhits) + sum_cpu(sim_stats.dmisses) + sum_cpu(sim_stats.ithits)
-                 + sum_cpu(sim_stats.itmisses) + sum_cpu(sim_stats.dthits) + sum_cpu(sim_stats.dtmisses);
-  fmt::print("[STATS] {} end_phase RECONCILE: total hits+misses = {}, categorized i/d/it/dt sum = {}, prefetch hit/miss = {}/{}, write hit/miss = {}/{} "
-             "(all sites categorize, so the two sums must match)\n",
-             NAME, tot_hits + tot_misses, cat_sum, pf_hits, pf_misses, wr_hits, wr_misses);
-#else
-  fmt::print("[STATS] {} end_phase: EXPAND_PACKET was NOT defined when cache.cc was compiled\n", NAME);
 #endif
 
   for (auto* ul : upper_levels) {
