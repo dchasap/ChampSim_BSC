@@ -234,7 +234,13 @@ public:
   [[deprecated("This function should not be used to access the blocks directly.")]] [[nodiscard]] uint64_t get_way(uint64_t address, uint64_t set) const;
 
   long invalidate_entry(champsim::address inval_addr);
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  /*! Issue a prefetch whose virtual address belongs to a known page-size class (see O3_CPU::classify_page()).
+   *  Unclassified prefetches default to class 0; VirtualMemory resolves the authoritative granularity. */
+  bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata, uint32_t page_size = 0, uint64_t base_vpn = 0);
+#else
   bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata);
+#endif
 
   [[deprecated]] bool prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata);
 

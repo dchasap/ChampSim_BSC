@@ -22,6 +22,7 @@
 #include <map>
 #include <optional>
 #include <random>
+#include <set>
 
 #include "address.h"
 #include "champsim.h"
@@ -30,6 +31,20 @@
 class MEMORY_CONTROLLER;
 
 using pte_entry = champsim::data::size<long long, std::ratio<8>>;
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+/**
+ * Result of VirtualMemory::va_to_pa() when multiple page sizes are enabled.
+ * VirtualMemory is the source of truth for the mapping granularity: \c large_page reports the
+ * actual page class of the mapping (which may differ from the class the requester assumed),
+ * so consumers splice virtual offsets at the correct width.
+ */
+struct translation_result {
+  champsim::page_number ppage{};
+  champsim::chrono::clock::duration penalty{};
+  bool large_page{false};
+};
+#endif
 
 class VirtualMemory
 {
@@ -45,18 +60,34 @@ public:
   const pte_entry pte_page_size; // Size of a PTE page
 
 private:
-  std::deque<champsim::page_number> ppage_free_list;
-  champsim::page_number active_pte_page{};
-  champsim::address_slice<champsim::dynamic_extent> next_pte_page;
+ std::deque<champsim::page_number> ppage_free_list;
+ champsim::page_number active_pte_page{};
+ champsim::address_slice<champsim::dynamic_extent> next_pte_page;
 
-  // champsim::page_number next_ppage;
-  // champsim::page_number last_ppage;
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+ // Physical memory is partitioned at construction time: the low portion is handed out in
+ // 4KiB pages to small mappings, the high portion in 2MiB-aligned frames to large mappings.
+ // The pools are disjoint, which guarantees that the 2MiB of physical addresses covered by a
+ // large page are contiguous and exclusive. Without this, two large regions whose anchor
+ // pages land in the same 2MiB frame would fully overlap physically.
+ std::deque<champsim::page_number> large_frame_free_list;
+ std::set<champsim::page_number> allocated_large_frames;
+#endif
 
-  [[nodiscard]] champsim::page_number ppage_front() const;
-  void ppage_pop();
+ // champsim::page_number next_ppage;
+ // champsim::page_number last_ppage;
 
-  void shuffle_pages();
-  void populate_pages();
+ [[nodiscard]] champsim::page_number ppage_front() const;
+ void ppage_pop();
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+ [[nodiscard]] champsim::page_number large_ppage_front() const;
+ void large_ppage_pop();
+ [[nodiscard]] static champsim::page_number frame_of(champsim::page_number vpage);
+#endif
+
+ void shuffle_pages();
+ void populate_pages();
 
 public:
   /**
@@ -96,6 +127,22 @@ public:
    */
   [[nodiscard]] std::size_t available_ppages() const;
 
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  /**
+   * Translate the given address from the virtual space to the physical space.
+   * If a page translation does not already exist, one will be created and the minor fault penalty will be applied.
+   *
+   * :param cpu_num: The cpu index of the core making the request. This is currently used as an address space ID.
+   * :param vaddr: The address to translate.
+   * :param page_class: The page-size class the caller believes this address belongs to (2 == 2MiB, as produced by
+   *   O3_CPU::classify_page()). VirtualMemory is the source of truth for the actual granularity: if the address
+   *   falls inside an already-allocated 2MiB frame, it is translated at 2MiB granularity regardless of this class.
+   *
+   * :returns: The physical page, the latency to be applied to the translation, and the actual page class
+   *   (see translation_result).
+   */
+  translation_result va_to_pa(uint32_t cpu_num, champsim::page_number vaddr, uint32_t page_class);
+#else
   /**
    * Translate the given address from the virtual space to the physical space.
    * If a page translation does not already exist, one will be created and the minor fault penalty will be applied.
@@ -106,6 +153,7 @@ public:
    * :returns: A pair of the physical address and the latency to be applied to the translation.
    */
   std::pair<champsim::page_number, champsim::chrono::clock::duration> va_to_pa(uint32_t cpu_num, champsim::page_number vaddr);
+#endif
 
   /**
    * Find the address for the page table page for the given virtual address (under translation), and the given level.

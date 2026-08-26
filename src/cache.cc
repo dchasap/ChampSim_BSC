@@ -744,7 +744,12 @@ long CACHE::invalidate_entry(champsim::address inval_addr)
   return std::distance(begin, inv_way);
 }
 
-bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata)
+bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                          ,
+                          uint32_t page_size, uint64_t base_vpn
+#endif
+)
 {
   ++sim_stats.pf_requested;
 
@@ -770,6 +775,11 @@ bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint3
     pf_packet.is_instr = true;
   }
   // is_pte stays false: matches ChampSim_old, where only page-table-walk accesses carry is_pte.
+#endif
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  pf_packet.page_size = page_size;
+  pf_packet.base_vpn = base_vpn;
 #endif
 
   internal_PQ.emplace_back(pf_packet, true, !fill_this_level);

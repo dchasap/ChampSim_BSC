@@ -16,11 +16,13 @@
 
 #include "vmem.h"
 
+#include <algorithm>
 #include <cassert>
 #include <fmt/core.h>
 
 #include "champsim.h"
 #include "dram_controller.h"
+#include "env_var.h"
 #include "util/bits.h"
 
 using namespace champsim::data::data_literals;
@@ -57,7 +59,28 @@ VirtualMemory::VirtualMemory(champsim::data::bytes page_table_page_size, std::si
 void VirtualMemory::populate_pages()
 {
   assert(dram.size() > 1_MiB);
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  // Partition physical memory: the low portion serves 4KiB pages, the top portion serves 2MiB frames.
+  // The pools are disjoint, so the 2MiB of physical addresses covered by a large page are contiguous
+  // and can never collide with another mapping.
+  //
+  // The large-pool share follows the requested large-page ratios (the same env vars that
+  // O3_CPU::classify_page() consults, so construction order does not matter). It is floored at
+  // ~1/8 of memory so that file-driven page assignments can still mark pages large when the
+  // ratios are 0%, and capped at ~7/8 so small-page-only workloads keep a working small pool.
+  const auto total_ppages = static_cast<uint64_t>(((dram.size() - 1_MiB) / PAGE_SIZE).count());
+  const uint64_t pages_per_large_frame = LARGE_PAGE_SIZE / PAGE_SIZE;
+  const auto instr_ratio = static_cast<unsigned>(std::clamp(champsim::EnvVar<int>::get_or("INSTR_PAGE_SIZE_DIST", 0), 0, 100));
+  const auto data_ratio = static_cast<unsigned>(std::clamp(champsim::EnvVar<int>::get_or("DATA_PAGE_SIZE_DIST", 0), 0, 100));
+  const unsigned large_pool_percent = std::clamp(std::max(instr_ratio, data_ratio), 13u, 87u);
+  const uint64_t num_large_frames = (total_ppages * large_pool_percent / 100) / pages_per_large_frame;
+  const uint64_t num_small_pages = total_ppages - num_large_frames * pages_per_large_frame;
+
+  ppage_free_list.resize(num_small_pages);
+#else
   ppage_free_list.resize(((dram.size() - 1_MiB) / PAGE_SIZE).count());
+#endif
   assert(ppage_free_list.size() != 0);
   champsim::page_number base_address =
       champsim::page_number{champsim::lowest_address_for_size(std::max<champsim::data::mebibytes>(champsim::data::bytes{PAGE_SIZE}, 1_MiB))};
@@ -65,12 +88,35 @@ void VirtualMemory::populate_pages()
     *it = base_address;
     base_address++;
   }
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+  large_frame_free_list.clear();
+  allocated_large_frames.clear();
+  if (num_large_frames > 0) {
+    const uint64_t pool_start_byte =
+        champsim::page_number{champsim::lowest_address_for_size(std::max<champsim::data::mebibytes>(champsim::data::bytes{PAGE_SIZE}, 1_MiB))}.to<uint64_t>()
+        * PAGE_SIZE;
+    // First frame base, rounded up to a LARGE_PAGE_SIZE boundary past the end of the small pool
+    const uint64_t first_frame_page =
+        ((pool_start_byte + num_small_pages * PAGE_SIZE) + LARGE_PAGE_SIZE - 1) / LARGE_PAGE_SIZE * pages_per_large_frame;
+    for (uint64_t f = 0; f < num_large_frames; ++f) {
+      champsim::page_number frame_base{first_frame_page + f * pages_per_large_frame};
+      if ((frame_base.to<uint64_t>() + pages_per_large_frame) * PAGE_SIZE <= dram.size().count()) {
+        large_frame_free_list.push_back(frame_base);
+      }
+    }
+  }
+#endif
 }
 
 void VirtualMemory::shuffle_pages()
 {
-  if (randomization_seed.has_value())
+  if (randomization_seed.has_value()) {
     std::shuffle(ppage_free_list.begin(), ppage_free_list.end(), std::mt19937_64{randomization_seed.value()});
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    std::shuffle(large_frame_free_list.begin(), large_frame_free_list.end(), std::mt19937_64{randomization_seed.value()});
+#endif
+  }
 }
 
 champsim::dynamic_extent VirtualMemory::extent(std::size_t level) const
@@ -104,6 +150,72 @@ void VirtualMemory::ppage_pop()
 
 std::size_t VirtualMemory::available_ppages() const { return (ppage_free_list.size()); }
 
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+champsim::page_number VirtualMemory::frame_of(champsim::page_number vpage)
+{
+  const uint64_t pages_per_large_frame = LARGE_PAGE_SIZE / PAGE_SIZE;
+  return champsim::page_number{(vpage.to<uint64_t>() / pages_per_large_frame) * pages_per_large_frame};
+}
+
+champsim::page_number VirtualMemory::large_ppage_front() const
+{
+  assert(!large_frame_free_list.empty());
+  return large_frame_free_list.front();
+}
+
+void VirtualMemory::large_ppage_pop()
+{
+  allocated_large_frames.insert(large_frame_free_list.front());
+  large_frame_free_list.pop_front();
+  if (large_frame_free_list.empty()) {
+    fmt::print("[VMEM] WARNING: Out of large (2MiB) physical frames, freeing frames\n"); // LCOV_EXCL_LINE
+    populate_pages();
+    shuffle_pages();
+  }
+}
+#endif
+
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+translation_result VirtualMemory::va_to_pa(uint32_t cpu_num, champsim::page_number vaddr, uint32_t page_class)
+{
+  constexpr uint32_t LARGE_PAGE_CLASS = 2; // matches O3_CPU::classify_page()
+
+  const uint64_t pages_per_large_frame = LARGE_PAGE_SIZE / PAGE_SIZE;
+  const bool frame_is_large = allocated_large_frames.count(frame_of(vaddr)) != 0;
+
+  // VirtualMemory is the source of truth for the mapping granularity. Even when a request was mislabeled by upper
+  // levels (e.g., a prefetch that never went through O3_CPU::classify_page()), a page inside an allocated 2MiB
+  // frame must be translated at 2MiB granularity so that every consumer splices consistent physical addresses.
+  if (page_class == LARGE_PAGE_CLASS || frame_is_large) {
+    const champsim::page_number region_key{(vaddr.to<uint64_t>() / pages_per_large_frame) * pages_per_large_frame};
+    auto [lpage, lfault] = vpage_to_ppage_map.try_emplace({cpu_num, region_key}, large_ppage_front());
+
+    // this vpage doesn't yet have a ppage mapping
+    if (lfault) {
+      large_ppage_pop();
+    }
+
+    if constexpr (champsim::debug_print) {
+      fmt::print("[VMEM] {} paddr: {} vpage: {} large_page: {} fault: {}\n", __func__, lpage->second, region_key, true, lfault);
+    }
+
+    return {lpage->second, lfault ? minor_fault_penalty : champsim::chrono::clock::duration::zero(), true};
+  }
+
+  auto [ppage, fault] = vpage_to_ppage_map.try_emplace({cpu_num, vaddr}, ppage_front());
+
+  // this vpage doesn't yet have a ppage mapping
+  if (fault) {
+    ppage_pop();
+  }
+
+  if constexpr (champsim::debug_print) {
+    fmt::print("[VMEM] {} paddr: {} vpage: {} large_page: {} fault: {}\n", __func__, ppage->second, vaddr, false, fault);
+  }
+
+  return {ppage->second, fault ? minor_fault_penalty : champsim::chrono::clock::duration::zero(), false};
+}
+#else
 std::pair<champsim::page_number, champsim::chrono::clock::duration> VirtualMemory::va_to_pa(uint32_t cpu_num, champsim::page_number vaddr)
 {
   auto [ppage, fault] = vpage_to_ppage_map.try_emplace({cpu_num, champsim::page_number{vaddr}}, ppage_front());
@@ -121,6 +233,7 @@ std::pair<champsim::page_number, champsim::chrono::clock::duration> VirtualMemor
 
   return std::pair{ppage->second, penalty};
 }
+#endif
 
 std::pair<champsim::address, champsim::chrono::clock::duration> VirtualMemory::get_pte_pa(uint32_t cpu_num, champsim::page_number vaddr, std::size_t level)
 {

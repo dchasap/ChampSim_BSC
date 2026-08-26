@@ -209,8 +209,16 @@ void O3_CPU::initialize_instruction()
       // Do not prefetch if the ip is already inflight
       if (std::end(IFETCH_BUFFER) == std::find_if(std::begin(IFETCH_BUFFER), std::end(IFETCH_BUFFER), [pf_addr] (auto x){
         return ((x.fetch_issued) && ((x.ip.template to<uint64_t>() >> LOG2_BLOCK_SIZE) == (pf_addr.to<uint64_t>() >> LOG2_BLOCK_SIZE)));
-      } ) ){   
+      } ) ){
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+        // Classify FDIP prefetches so they take the same large-page path as demand fetches.
+        // Without this, an unclassified prefetch into a large region misses the TLBs, triggers a
+        // full page walk, and installs lines at physical addresses inconsistent with the region's frame.
+        auto [pf_pgsz, pf_base_vpn] = classify_page(pf_addr, true);
+        if (l1i->prefetch_line(pf_addr, true, 0, pf_pgsz, pf_base_vpn)) {
+#else
         if (l1i->prefetch_line(pf_addr, true, 0)) {
+#endif
           uint64_t current_cycle = current_time.time_since_epoch() / clock_period;
           fdip.issue_prefetch(instr_id, current_cycle);
         }
@@ -728,7 +736,7 @@ bool O3_CPU::do_complete_store(const LSQ_ENTRY& sq_entry)
   data_packet.instr_id = sq_entry.instr_id;
   data_packet.ip = sq_entry.ip;
 
-#if defined(EXPAND_PACKET)
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   data_packet.page_size = sq_entry.page_size;
   data_packet.base_vpn = sq_entry.base_vpn;
 #endif
@@ -747,7 +755,7 @@ bool O3_CPU::execute_load(const LSQ_ENTRY& lq_entry)
   data_packet.instr_id = lq_entry.instr_id;
   data_packet.ip = lq_entry.ip;
 
-#if defined(EXPAND_PACKET)
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   data_packet.page_size = lq_entry.page_size;
   data_packet.base_vpn = lq_entry.base_vpn;
 #endif

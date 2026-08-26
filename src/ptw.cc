@@ -218,8 +218,17 @@ void PageTableWalker::finish_packet(const response_type& packet)
     return champsim::waitable{ppage, this->current_time + penalty + (this->warmup ? champsim::chrono::clock::duration{} : HIT_LATENCY)};
   };
 
-  auto finish_last_step = [this](auto mshr_entry) {
+  auto finish_last_step = [this](auto& mshr_entry) {
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+    auto [ppage, penalty, is_large_page] = this->vmem->va_to_pa(mshr_entry.cpu, champsim::page_number{mshr_entry.v_address}, mshr_entry.page_size);
+    // vmem resolves the authoritative mapping granularity. Correct mislabeled packets here (e.g., a prefetch
+    // that was never classified but hits a 2MiB region) so downstream consumers splice offsets at the right width.
+    if (is_large_page) {
+      mshr_entry.page_size = 2;
+    }
+#else
     auto [ppage, penalty] = this->vmem->va_to_pa(mshr_entry.cpu, champsim::page_number{mshr_entry.v_address});
+#endif
 
     if constexpr (champsim::debug_print) {
       fmt::print("[{}] complete_packet address: {} v_address: {} data: {} translation_level: {} clock: {} penalty: {}\n", NAME, mshr_entry.address,
@@ -243,8 +252,21 @@ void PageTableWalker::finish_packet(const response_type& packet)
   };
   auto last_finished = std::partition(std::begin(MSHR), std::end(MSHR), matches_addr);
 
-  std::for_each(std::begin(MSHR), last_finished, [is_last_step, finish_step, finish_last_step](auto& mshr_entry) {
-    mshr_entry.data = is_last_step(mshr_entry) ? finish_last_step(mshr_entry) : finish_step(mshr_entry);
+  std::for_each(std::begin(MSHR), last_finished, [is_last_step, finish_step, finish_last_step, this](auto& mshr_entry) {
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+   // A large-page walk terminates at level 1 and is routed to 'completed', bypassing handle_fill(), which is
+   // the only place PSCL entries are otherwise filled. Fill the finest PSCL here (same index formula as
+   // handle_fill()) so later walks to the same 2MiB region resume directly at level 1 instead of restarting
+   // from CR3. get_pte_pa() only synthesizes the level-1 PTE address; its penalty is discarded because the
+   // response latency below is governed by va_to_pa().
+   if (is_last_step(mshr_entry) && mshr_entry.page_size == 2 && mshr_entry.translation_level >= 1
+       && mshr_entry.translation_level <= std::size(pscl)) {
+     const auto pscl_idx = std::size(pscl) - mshr_entry.translation_level;
+     auto pte_page = this->vmem->get_pte_pa(mshr_entry.cpu, champsim::page_number{mshr_entry.v_address}, mshr_entry.translation_level);
+     pscl.at(pscl_idx).fill({mshr_entry.v_address, pte_page.first, mshr_entry.translation_level});
+   }
+#endif
+   mshr_entry.data = is_last_step(mshr_entry) ? finish_last_step(mshr_entry) : finish_step(mshr_entry);
   });
 
   std::partition_copy(std::begin(MSHR), last_finished, std::back_inserter(completed), std::back_inserter(finished), is_last_step);
