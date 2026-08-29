@@ -290,6 +290,10 @@ bool O3_CPU::do_predict_branch(ooo_model_instr& arch_instr)
     impl_last_branch_result(arch_instr.ip, arch_instr.branch_target, arch_instr.branch_taken, arch_instr.branch);
   }
 
+#if defined(EXPAND_PACKET)
+  update_branch_history(arch_instr.ip.to<uint64_t>(), arch_instr.branch);
+#endif
+
   return stop_fetch;
 }
 
@@ -1065,5 +1069,63 @@ std::pair<uint32_t, uint64_t> O3_CPU::classify_page(champsim::address addr, bool
     ++sim_stats.data_small_page_accesses;
   }
   return {SMALL_PAGE_CLASS, raw_addr >> LOG2_PAGE_SIZE};
+}
+#endif
+
+#if defined(EXPAND_PACKET)
+// CHiRP branch history helpers (mirrors ChampSim_old/src/ooo_cpu.cc behavior)
+namespace
+{
+constexpr int glob_shifts_main = 4;
+constexpr int folding_factor = 2;
+constexpr int globe_bits_mask_main = 3;
+
+// Shifts hist left by 8 bits and ORs in the lower 8 bits of (pc >> 2)
+void update_history(uint64_t pc, uint64_t& hist)
+{
+  hist <<= 8;
+  hist |= ((pc >> 2) & 0xFF);
+}
+
+// Updates global_path_history and global_path_history_MHRP
+void update_path_history_chirp(uint64_t pc, uint64_t& gph, uint64_t& gph_mhrp)
+{
+  gph <<= glob_shifts_main;
+  gph |= (pc & 7);
+  gph_mhrp <<= glob_shifts_main;
+  gph_mhrp |= ((pc >> folding_factor) & globe_bits_mask_main);
+}
+} // namespace
+
+void O3_CPU::update_branch_history(uint64_t pc, uint8_t branch_type)
+{
+  // Update path history for every instruction
+  update_path_history_chirp(pc, global_path_history, global_path_history_MHRP);
+
+  // Update conditional/unconditional history based on branch type
+  switch (branch_type) {
+  case BRANCH_INDIRECT:
+    update_history(pc, uncondIndHistory);
+    break;
+  case BRANCH_CONDITIONAL:
+    update_history(pc, condHistory);
+    break;
+  default:
+    // Other branch types don't update the specific histories
+    break;
+  }
+
+  // Snapshot the _old values for use in replacement policy signatures
+  // These are captured BEFORE the current branch's effect, matching old ChampSim behavior
+  uncondIndHistory_old = uncondIndHistory;
+  condHistory_old = condHistory;
+}
+
+template <typename ReqType>
+void O3_CPU::set_branch_history_on_request(ReqType& pkt)
+{
+  pkt.cond_history = condHistory_old;
+  pkt.uncond_ind_history = uncondIndHistory_old;
+  pkt.global_path_history = global_path_history_MHRP;
 }
 #endif

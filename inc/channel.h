@@ -71,6 +71,10 @@ class channel
     bool is_instr = false;
     bool is_pte = false;
     std::size_t translation_level = 0;
+    // CHiRP branch history (snapshot from the issuing CPU at request creation time)
+    uint64_t cond_history = 0;
+    uint64_t uncond_ind_history = 0;
+    uint64_t global_path_history = 0;
 #endif
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     uint32_t page_size = 0;

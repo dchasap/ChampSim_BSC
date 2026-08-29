@@ -104,6 +104,10 @@ CACHE::tag_lookup_type::tag_lookup_type(const request_type& req, bool local_pref
   is_instr = req.is_instr;
   is_pte = req.is_pte;
   translation_level = req.translation_level;
+  // CHiRP branch history
+  cond_history = req.cond_history;
+  uncond_ind_history = req.uncond_ind_history;
+  global_path_history = req.global_path_history;
 #endif
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   page_size = req.page_size;
@@ -119,6 +123,10 @@ CACHE::fill_type::fill_type(const tag_lookup_type& req, champsim::chrono::clock:
   is_instr = req.is_instr;
   is_pte = req.is_pte;
   translation_level = req.translation_level;
+  // CHiRP branch history
+  cond_history = req.cond_history;
+  uncond_ind_history = req.uncond_ind_history;
+  global_path_history = req.global_path_history;
 #endif
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   page_size = req.page_size;
@@ -207,7 +215,7 @@ bool CACHE::handle_fill(const fill_type& fill)
   auto way = std::find_if_not(set_begin, set_end, [](auto x) { return x.valid; });
   if (way == set_end) {
 #if defined(EXPAND_PACKET)
-    repl_pol_xargs xargs{fill.is_instr, fill.is_pte, false, fill.translation_level};
+    repl_pol_xargs xargs{fill.is_instr, fill.is_pte, false, fill.translation_level, fill.cond_history, fill.uncond_ind_history, fill.global_path_history};
     way = std::next(set_begin, impl_find_victim(fill.cpu, fill.instr_id, get_set_index(fill.address), &*set_begin, fill.ip, fill.address, fill.type, xargs));
 #else
     way = std::next(set_begin, impl_find_victim(fill.cpu, fill.instr_id, get_set_index(fill.address), &*set_begin, fill.ip, fill.address, fill.type));
@@ -264,7 +272,7 @@ bool CACHE::handle_fill(const fill_type& fill)
   auto metadata_thru = impl_prefetcher_cache_fill(module_address(fill), get_set_index(fill.address), way_idx, (fill.type == access_type::PREFETCH),
                                                   evicting_address, fill.data_promise->pf_metadata);
 #if defined(EXPAND_PACKET)
-  repl_pol_xargs xargs{fill.is_instr, fill.is_pte, false, fill.translation_level};
+  repl_pol_xargs xargs{fill.is_instr, fill.is_pte, false, fill.translation_level, fill.cond_history, fill.uncond_ind_history, fill.global_path_history};
   impl_replacement_cache_fill(fill.cpu, get_set_index(fill.address), way_idx, module_address(fill), fill.ip, evicting_address, fill.type, xargs);
 #else
   impl_replacement_cache_fill(fill.cpu, get_set_index(fill.address), way_idx, module_address(fill), fill.ip, evicting_address, fill.type);
@@ -365,7 +373,8 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
   // update replacement policy
   const auto way_idx = std::distance(set_begin, way);
 #if defined(EXPAND_PACKET)
-  repl_pol_xargs xargs{handle_pkt.is_instr, handle_pkt.is_pte, false, handle_pkt.translation_level};
+  repl_pol_xargs xargs{handle_pkt.is_instr, handle_pkt.is_pte, false, handle_pkt.translation_level, handle_pkt.cond_history, handle_pkt.uncond_ind_history,
+                       handle_pkt.global_path_history};
   impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
                                 hit, xargs);
 #else

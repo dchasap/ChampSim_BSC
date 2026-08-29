@@ -151,6 +151,17 @@ public:
   // branch
   champsim::chrono::clock::time_point fetch_resume_time{};
 
+#if defined(EXPAND_PACKET)
+  // CHiRP branch history (per-CPU state, used to seed request packets for
+  // replacement policies like CHiRP that need a branch-history signature)
+  uint64_t condHistory = 0;
+  uint64_t uncondIndHistory = 0;
+  uint64_t condHistory_old = 0;
+  uint64_t uncondIndHistory_old = 0;
+  uint64_t global_path_history = 0;
+  uint64_t global_path_history_MHRP = 0;
+#endif
+
   const long IN_QUEUE_SIZE;
   std::deque<ooo_model_instr> input_queue;
 
@@ -193,6 +204,13 @@ public:
   long complete_inflight_instruction();
   long handle_memory_return();
   long retire_rob();
+
+#if defined(EXPAND_PACKET)
+  // CHiRP branch history helpers
+  void update_branch_history(uint64_t pc, uint8_t branch_type);
+  template <typename ReqType>
+  void set_branch_history_on_request(ReqType& pkt);
+#endif
 
   bool do_init_instruction(ooo_model_instr& instr);
   bool do_predict_branch(ooo_model_instr& instr);

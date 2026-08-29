@@ -88,6 +88,10 @@ class CACHE : public champsim::operable
     bool is_instr = false;
     bool is_pte = false;
     std::size_t translation_level = 0;
+    // CHiRP branch history (propagated from request_type)
+    uint64_t cond_history = 0;
+    uint64_t uncond_ind_history = 0;
+    uint64_t global_path_history = 0;
 #endif
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     uint32_t page_size = 0;
@@ -105,6 +109,10 @@ public:
     bool is_pte = false;
     bool is_replay = false;
     std::size_t translation_level = 0;
+    // CHiRP branch history snapshot from the issuing CPU
+    uint64_t cond_history = 0;
+    uint64_t uncond_ind_history = 0;
+    uint64_t global_path_history = 0;
   };
 #endif
 
@@ -135,6 +143,10 @@ public:
     bool is_instr = false;
     bool is_pte = false;
     std::size_t translation_level = 0;
+    // CHiRP branch history (propagated from tag_lookup_type)
+    uint64_t cond_history = 0;
+    uint64_t uncond_ind_history = 0;
+    uint64_t global_path_history = 0;
 #endif
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     uint32_t page_size = 0;
