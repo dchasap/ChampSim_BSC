@@ -206,7 +206,12 @@ bool CACHE::handle_fill(const fill_type& fill)
   auto [set_begin, set_end] = get_set_span(fill.address);
   auto way = std::find_if_not(set_begin, set_end, [](auto x) { return x.valid; });
   if (way == set_end) {
+#if defined(EXPAND_PACKET)
+    repl_pol_xargs xargs{fill.is_instr, fill.is_pte, false, fill.translation_level};
+    way = std::next(set_begin, impl_find_victim(fill.cpu, fill.instr_id, get_set_index(fill.address), &*set_begin, fill.ip, fill.address, fill.type, xargs));
+#else
     way = std::next(set_begin, impl_find_victim(fill.cpu, fill.instr_id, get_set_index(fill.address), &*set_begin, fill.ip, fill.address, fill.type));
+#endif
   }
   assert(set_begin <= way);
   assert(way <= set_end);
@@ -258,7 +263,12 @@ bool CACHE::handle_fill(const fill_type& fill)
 
   auto metadata_thru = impl_prefetcher_cache_fill(module_address(fill), get_set_index(fill.address), way_idx, (fill.type == access_type::PREFETCH),
                                                   evicting_address, fill.data_promise->pf_metadata);
+#if defined(EXPAND_PACKET)
+  repl_pol_xargs xargs{fill.is_instr, fill.is_pte, false, fill.translation_level};
+  impl_replacement_cache_fill(fill.cpu, get_set_index(fill.address), way_idx, module_address(fill), fill.ip, evicting_address, fill.type, xargs);
+#else
   impl_replacement_cache_fill(fill.cpu, get_set_index(fill.address), way_idx, module_address(fill), fill.ip, evicting_address, fill.type);
+#endif
 
   if (way != set_end) {
     if (way->valid && way->prefetch) {
@@ -354,8 +364,14 @@ bool CACHE::try_hit(const tag_lookup_type& handle_pkt)
 
   // update replacement policy
   const auto way_idx = std::distance(set_begin, way);
+#if defined(EXPAND_PACKET)
+  repl_pol_xargs xargs{handle_pkt.is_instr, handle_pkt.is_pte, false, handle_pkt.translation_level};
+  impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
+                                hit, xargs);
+#else
   impl_update_replacement_state(handle_pkt.cpu, get_set_index(handle_pkt.address), way_idx, module_address(handle_pkt), handle_pkt.ip, {}, handle_pkt.type,
                                 hit);
+#endif
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   }
 #endif
@@ -1063,21 +1079,48 @@ void CACHE::impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_
 void CACHE::impl_initialize_replacement() const { repl_module_pimpl->impl_initialize_replacement(); }
 
 long CACHE::impl_find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, const BLOCK* current_set, champsim::address ip, champsim::address full_addr,
-                             access_type type) const
+                             access_type type
+#if defined(EXPAND_PACKET)
+                             ,
+                             repl_pol_xargs xargs
+#endif
+                             ) const
 {
+#if defined(EXPAND_PACKET)
+  return repl_module_pimpl->impl_find_victim(triggering_cpu, instr_id, set, current_set, ip, full_addr, type, xargs);
+#else
   return repl_module_pimpl->impl_find_victim(triggering_cpu, instr_id, set, current_set, ip, full_addr, type);
+#endif
 }
 
 void CACHE::impl_update_replacement_state(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                          champsim::address victim_addr, access_type type, bool hit) const
+                                          champsim::address victim_addr, access_type type, bool hit
+#if defined(EXPAND_PACKET)
+                                          ,
+                                          repl_pol_xargs xargs
+#endif
+                                          ) const
 {
+#if defined(EXPAND_PACKET)
+  repl_module_pimpl->impl_update_replacement_state(triggering_cpu, set, way, full_addr, ip, victim_addr, type, hit, xargs);
+#else
   repl_module_pimpl->impl_update_replacement_state(triggering_cpu, set, way, full_addr, ip, victim_addr, type, hit);
+#endif
 }
 
 void CACHE::impl_replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                        champsim::address victim_addr, access_type type) const
+                                        champsim::address victim_addr, access_type type
+#if defined(EXPAND_PACKET)
+                                        ,
+                                        repl_pol_xargs xargs
+#endif
+                                        ) const
 {
+#if defined(EXPAND_PACKET)
+  repl_module_pimpl->impl_replacement_cache_fill(triggering_cpu, set, way, full_addr, ip, victim_addr, type, xargs);
+#else
   repl_module_pimpl->impl_replacement_cache_fill(triggering_cpu, set, way, full_addr, ip, victim_addr, type);
+#endif
 }
 
 void CACHE::impl_replacement_final_stats() const { repl_module_pimpl->impl_replacement_final_stats(); }
