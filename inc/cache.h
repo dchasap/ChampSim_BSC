@@ -26,12 +26,14 @@
 #include <cstddef> // for size_t
 #include <cstdint> // for uint64_t, uint32_t, uint8_t
 #include <deque>
+#include <iostream> // for PREFETCH_BUFFER debug prints
 #include <iterator> // for size
 #include <limits>   // for numeric_limits
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_map> // for PREFETCH_BUFFER
 #include <vector>
 
 #include "address.h"
@@ -46,6 +48,21 @@
 #include "operable.h"
 #include "util/to_underlying.h" // for to_underlying
 #include "waitable.h"
+
+#if defined(PREFETCH_BUFFER)
+#include "env_var.h" // for L*D_ENABLE_PF_BUFFER runtime config
+
+// Provide std::hash<champsim::address> so std::unordered_map can be keyed
+// by the project's address type (champsim::address is an address_slice alias
+// and ships without a hash specialization).
+namespace std {
+template <>
+struct hash<champsim::address> {
+  std::size_t operator()(champsim::address addr) const noexcept { return addr.template to<std::size_t>(); }
+};
+} // namespace std
+
+#endif
 
 class CACHE : public champsim::operable
 {
@@ -193,6 +210,90 @@ private:
   std::deque<tag_lookup_type> internal_PQ{};
   std::deque<tag_lookup_type> inflight_tag_check{};
   std::deque<tag_lookup_type> translation_stash{};
+
+#if defined(PREFETCH_BUFFER)
+  // -------------------------------------------------------------------
+  // PREFETCH_BUFFER: unlimited map-based buffer that holds prefetched
+  // lines.  Key = address (cache-line granularity via block alignment).
+  // Enabled per cache at runtime via env vars:
+  //   L1D_ENABLE_PF_BUFFER, L2C_ENABLE_PF_BUFFER, LLC_ENABLE_PF_BUFFER
+  // -------------------------------------------------------------------
+  class PrefetchBuffer {
+  public:
+    struct PBEntry {
+      champsim::address data;
+      champsim::chrono::clock::time_point insert_time;
+      uint32_t pf_metadata = 0;
+      uint8_t type = 0;
+#if defined(EXPAND_PACKET)
+      bool is_pte = false;
+      bool is_instr = false;
+      uint8_t pte_level = 0;
+#endif
+    };
+
+  private:
+    std::unordered_map<champsim::address, PBEntry> entries{};
+
+    uint64_t stat_inserts = 0;
+    uint64_t stat_demand_hits = 0;
+
+  public:
+    PrefetchBuffer()
+    {
+      std::cout << "PREFETCH_BUFFER: map-based (unbounded, collision-free)" << std::endl;
+    }
+
+    void insert(const champsim::address& addr, const champsim::address& data, uint32_t pf_metadata, uint8_t type,
+                champsim::chrono::clock::time_point insert_time
+#if defined(EXPAND_PACKET)
+                ,
+                bool is_pte, bool is_instr, uint8_t pte_level
+#endif
+    )
+    {
+      auto& e = entries[addr]; // insert or overwrite
+      e.data = data;
+      e.insert_time = insert_time;
+      e.pf_metadata = pf_metadata;
+      e.type = type;
+#if defined(EXPAND_PACKET)
+      e.is_pte = is_pte;
+      e.is_instr = is_instr;
+      e.pte_level = pte_level;
+#endif
+      stat_inserts++;
+    }
+
+    PBEntry* lookup(const champsim::address& addr)
+    {
+      auto it = entries.find(addr);
+      if (it != entries.end()) {
+        stat_demand_hits++;
+        return &it->second;
+      }
+      return nullptr;
+    }
+
+    void invalidate(const champsim::address& addr) { entries.erase(addr); }
+
+    void print_stats() const
+    {
+      const double hit_rate = (stat_inserts > 0)
+                                ? 100.0 * static_cast<double>(stat_demand_hits) / static_cast<double>(stat_inserts)
+                                : 0.0;
+      std::cout << "PREFETCH_BUFFER STATS"
+                << " INSERTS:" << stat_inserts
+                << " DEMAND_HITS:" << stat_demand_hits
+                << " HIT_RATE(%):" << hit_rate
+                << " SIZE_AT_END:" << entries.size()
+                << std::endl;
+    }
+  };
+
+  PrefetchBuffer* pf_buffer = nullptr;
+  bool enable_pf_buffer = false;
+#endif // PREFETCH_BUFFER
 
 public:
   std::vector<channel_type*> upper_levels;
@@ -419,6 +520,28 @@ public:
         prefetch_as_load(b.m_pref_load), match_offset_bits(b.m_wq_full_addr), virtual_prefetch(b.m_va_pref), pref_activate_mask(b.m_pref_act_mask),
         pref_module_pimpl(std::make_unique<prefetcher_module_model<Ps...>>(this)), repl_module_pimpl(std::make_unique<replacement_module_model<Rs...>>(this))
   {
+#if defined(PREFETCH_BUFFER)
+    // ENABLE_PF_BUFFER: runtime flag (0 or 1) to enable the prefetch buffer.
+    // Environment variable is cache-specific, e.g., L1D_ENABLE_PF_BUFFER,
+    // L2C_ENABLE_PF_BUFFER, LLC_ENABLE_PF_BUFFER (matches ChampSim_old).
+    std::string env_var_name;
+    if (NAME.find("L1D") != std::string::npos || NAME.find("L1I") != std::string::npos) {
+      env_var_name = "L1_ENABLE_PF_BUFFER";
+    } else if (NAME.find("L2C") != std::string::npos) {
+      env_var_name = "L2C_ENABLE_PF_BUFFER";
+    } else if (NAME.find("LLC") != std::string::npos || NAME.find("L3C") != std::string::npos) {
+      env_var_name = "LLC_ENABLE_PF_BUFFER";
+    }
+    if (!env_var_name.empty()) {
+      if (auto v = champsim::EnvVar<int>::get(env_var_name.c_str())) {
+        if (*v != 0) {
+          enable_pf_buffer = true;
+          std::cout << NAME << " enabling PREFETCH_BUFFER" << std::endl;
+          pf_buffer = new PrefetchBuffer();
+        }
+      }
+    }
+#endif // PREFETCH_BUFFER
   }
 
   CACHE(const CACHE&) = delete;

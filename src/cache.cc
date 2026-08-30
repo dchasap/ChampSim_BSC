@@ -215,6 +215,36 @@ bool CACHE::handle_fill(const fill_type& fill)
 {
   cpu = fill.cpu;
 
+#if defined(PREFETCH_BUFFER)
+  // PREFETCH_BUFFER: redirect prefetch fills into the buffer so they do not
+  // pollute the main cache.  IMPORTANT: still deliver the response to any
+  // merged demand requesters via fill.to_return -- otherwise the upper level's
+  // MSHR entry waits for a response that will never arrive, deadlocking the
+  // pipeline.  This matches ChampSim_old's behaviour, where the fill is
+  // recorded in the buffer AND the requester's to_return gets the data.
+  if (enable_pf_buffer && pf_buffer && fill.prefetch_from_this) {
+    pf_buffer->insert(fill.address, fill.data_promise->data, fill.data_promise->pf_metadata,
+                      static_cast<uint8_t>(fill.type), fill.time_enqueued
+#if defined(EXPAND_PACKET)
+                      ,
+                      fill.is_pte, fill.is_instr, static_cast<uint8_t>(fill.translation_level)
+#endif
+    );
+    sim_stats.pf_fill++;
+    sim_stats.total_miss_latency_cycles += (current_time - (fill.time_enqueued + champsim::chrono::clock::duration{1})).count();
+    // Deliver the response to merged demand requesters so they unblock.
+    response_type pf_response{fill.address, fill.v_address, fill.data_promise->data, fill.data_promise->pf_metadata, fill.instr_depend_on_me
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                              , fill.page_size, fill.base_vpn
+#endif
+    };
+    for (auto* ret : fill.to_return) {
+      ret->push_back(pf_response);
+    }
+    return true;
+  }
+#endif // PREFETCH_BUFFER
+
   // find victim
   auto [set_begin, set_end] = get_set_span(fill.address);
   auto way = std::find_if_not(set_begin, set_end, [](auto x) { return x.valid; });
@@ -484,6 +514,36 @@ auto CACHE::mshr_and_forward_packet(const tag_lookup_type& handle_pkt) -> std::p
 
 bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
 {
+#if defined(PREFETCH_BUFFER)
+  // PREFETCH_BUFFER: check if a previously prefetched line is waiting in the buffer.
+  // If so, serve the demand miss from there.
+  if (enable_pf_buffer && pf_buffer) {
+    if (auto* pb_entry = pf_buffer->lookup(handle_pkt.address)) {
+      sim_stats.pf_useful++;
+      sim_stats.hits.increment(std::pair{handle_pkt.type, handle_pkt.cpu});
+      // Serve the requester immediately
+      response_type response{handle_pkt.address, handle_pkt.v_address, pb_entry->data, handle_pkt.pf_metadata, handle_pkt.instr_depend_on_me
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+                             , handle_pkt.page_size, handle_pkt.base_vpn
+#endif
+      };
+      for (auto* ret : handle_pkt.to_return) {
+        ret->push_back(response);
+      }
+      // Also install the line in the main cache so future accesses hit there directly.
+      // prefetch_from_this=false prevents the fill from being re-routed to this buffer.
+      fill_type fill_pkt{handle_pkt, current_time};
+      fill_pkt.prefetch_from_this = false;
+      fill_pkt.to_return.clear();
+      fill_pkt.data_promise = champsim::waitable<fill_type::returned_value>{
+          fill_type::returned_value{pb_entry->data, pb_entry->pf_metadata}, current_time + FILL_LATENCY};
+      handle_fill(fill_pkt);
+      pf_buffer->invalidate(handle_pkt.address);
+      return true;
+    }
+  }
+#endif // PREFETCH_BUFFER
+
   if constexpr (champsim::debug_print) {
     fmt::print("[{}] {} instr_id: {} address: {} v_address: {} type: {} local_prefetch: {} cycle: {}\n", NAME, __func__, handle_pkt.instr_id,
                handle_pkt.address, handle_pkt.v_address, access_type_names.at(champsim::to_underlying(handle_pkt.type)), handle_pkt.prefetch_from_this,
