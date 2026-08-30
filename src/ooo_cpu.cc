@@ -35,6 +35,10 @@
 #include "instruction.h"
 #include "util/span.h"
 
+// Global instruction counter - mirrors the ChampSim_old RETIRED_INSTRS variable.
+// Updated whenever instructions are retired. Used by replacement policies (e.g. xPTP).
+uint64_t RETIRED_INSTRS = 0;
+
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
 namespace
 {
@@ -869,6 +873,7 @@ long O3_CPU::retire_rob()
 
   auto retire_count = std::distance(retire_begin, retire_end);
   num_retired += retire_count;
+  RETIRED_INSTRS += static_cast<uint64_t>(retire_count); // Update global counter for replacement policies
   ROB.erase(retire_begin, retire_end);
 
   return retire_count;

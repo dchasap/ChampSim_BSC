@@ -166,8 +166,8 @@ void tship::update_replacement_state(uint32_t triggering_cpu, long set, long way
             match->used = 0;
         }
 
-        // update LRU state using access_count
-        match->last_used = access_count++;
+        // update LRU state using current cycle counter
+        match->last_used = intern_->current_time.time_since_epoch() / intern_->clock_period;
     }
 
     if (hit)

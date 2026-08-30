@@ -91,6 +91,10 @@ struct LSQ_ENTRY : champsim::program_ordered<LSQ_ENTRY> {
   void finish(std::deque<ooo_model_instr>::iterator begin, std::deque<ooo_model_instr>::iterator end) const;
 };
 
+// Global instruction counter - mirrors the ChampSim_old RETIRED_INSTRS variable.
+// Updated whenever instructions are retired. Used by replacement policies (e.g. xPTP).
+extern uint64_t RETIRED_INSTRS;
+
 // cpu
 class O3_CPU : public champsim::operable
 {

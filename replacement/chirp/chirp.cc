@@ -211,7 +211,7 @@ long chirp::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long set, co
 
     nvict++;
     long way = intern_->NUM_WAY;
-    unsigned int trace = make_signature(ip.to<uint64_t>(), intern_->NAME, condHistory_old, uncondIndHistory_old, global_path_history_MHRP);
+    unsigned int trace = static_cast<unsigned int>(make_signature(ip.to<uint64_t>(), intern_->NAME, condHistory_old, uncondIndHistory_old, global_path_history_MHRP));
 
     // not sure when and why we bypass
     bool prediction_bypass;
@@ -270,7 +270,7 @@ void chirp::update_replacement_state(uint32_t triggering_cpu, long set, long way
     set_branch_history(xargs.cond_history, xargs.uncond_ind_history, xargs.global_path_history);
 #endif
 
-    unsigned int trace = make_signature(ip.to<uint64_t>(), intern_->NAME, condHistory_old, uncondIndHistory_old, global_path_history_MHRP);
+    unsigned int trace = static_cast<unsigned int>(make_signature(ip.to<uint64_t>(), intern_->NAME, condHistory_old, uncondIndHistory_old, global_path_history_MHRP));
     int pred_confidence = _predTable.get_prediction(static_cast<int>(module_type), trace);
     if (pred_confidence >= cache_thresh) {
         is_dead[set * intern_->NUM_WAY + way] = true;
@@ -287,7 +287,7 @@ void chirp::update_replacement_state(uint32_t triggering_cpu, long set, long way
     }
 
     // Update Sampler
-    int sampler_set_idx = set / sampler_modulus;
+    int sampler_set_idx = static_cast<int>(set / sampler_modulus);
     if (sampler_set_idx < static_cast<int>(sampler_sets.size())) {
         auto& blocks = sampler_sets[sampler_set_idx].blocks;
         uint64_t partial_tag = full_addr.to<uint64_t>();
@@ -295,6 +295,7 @@ void chirp::update_replacement_state(uint32_t triggering_cpu, long set, long way
         bool emptyFound = false;
         bool deadFound = false;
         bool feedback = false;
+        (void)feedback; // Suppress unused variable warning
         uint32_t victim_idx = _sampler_assoc; // dummy val
         uint64_t trace_current = make_signature(ip.to<uint64_t>(), intern_->NAME);
 
@@ -304,6 +305,10 @@ void chirp::update_replacement_state(uint32_t triggering_cpu, long set, long way
                 victim_idx = i;
                 matched_samp_cnt++;
                 feedback = true;
+                // Track false positives: predicted dead block was actually hit
+                if (blocks[i].prediction == true) {
+                    nfalsepos++;
+                }
                 _predTable.block_is_dead(static_cast<int>(module_type), blocks[i].trace, false);
                 break;
             }
@@ -320,6 +325,7 @@ void chirp::update_replacement_state(uint32_t triggering_cpu, long set, long way
             }
             if (emptyFound == false) {
                 uint32_t deadest = _sampler_assoc;
+                (void)deadest; // Suppress unused variable warning
                 for (uint32_t i = 0; i < _sampler_assoc; i++) {
                     if (blocks[i].prediction == true) {
                         deadFound = true;
@@ -341,16 +347,22 @@ void chirp::update_replacement_state(uint32_t triggering_cpu, long set, long way
                         nevict_samp++;
                         feedback = true;
                         lru_sampler_cnt++;
+                        // Track false negatives and deadlru stats
+                        if (blocks[j].prediction == false) {
+                            nfalseneg++;  // predicted not dead but evicted via LRU
+                        } else {
+                            deadlru++;    // predicted dead but evicted via LRU
+                        }
                         break;
                     }
                 }
                 assert(j < _sampler_assoc);
                 victim_idx = j;
             }
-            blocks[victim_idx].tag = partial_tag;
+            blocks[victim_idx].tag = static_cast<unsigned int>(partial_tag);
             blocks[victim_idx].valid = true;
         }
-        blocks[victim_idx].trace = trace_current;
+        blocks[victim_idx].trace = static_cast<unsigned int>(trace_current);
         pred_confidence = _predTable.get_prediction(static_cast<int>(module_type), trace_current);
         if (pred_confidence >= cache_thresh) {
             blocks[victim_idx].prediction = true;
@@ -372,11 +384,11 @@ void chirp::update_replacement_state(uint32_t triggering_cpu, long set, long way
     } else {
         table_update_flag = true;
     }
-    last_set = set;
+    last_set = static_cast<uint32_t>(set);
 
     // Update LRU
     if (!hit || type != access_type::WRITE) // Skip this for writeback hits
-        last_used_cycles[set * intern_->NUM_WAY + way] = intern_->current_cycle();
+        last_used_cycles[set * intern_->NUM_WAY + way] = intern_->current_time.time_since_epoch() / intern_->clock_period;
 
 }
 

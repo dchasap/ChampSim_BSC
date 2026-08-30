@@ -28,9 +28,14 @@
 #include "chrono.h"
 #include "deadlock.h"
 #include "instruction.h"
+#include "ooo_cpu.h"
 #include "util/algorithm.h"
 #include "util/bits.h"
 #include "util/span.h"
+
+// STLB_MPKI is defined in replacement/xptp/xptp.cc and updated here.
+// RETIRED_INSTRS is defined in src/ooo_cpu.cc and updated there.
+extern double STLB_MPKI;
 
 CACHE::CACHE(CACHE&& other)
     : operable(other),
@@ -542,6 +547,14 @@ bool CACHE::handle_miss(const tag_lookup_type& handle_pkt)
       sim_stats.itmisses.increment(handle_pkt.cpu);
     } else {
       sim_stats.dtmisses.increment(handle_pkt.cpu);
+    }
+
+    // Update STLB_MPKI for replacement policies (e.g. xPTP) that need TLB stress feedback.
+    // Only update when the cache is an STLB and RETIRED_INSTRS is available.
+    if (NAME.find("STLB") != std::string::npos && RETIRED_INSTRS > 0) {
+      double retired_instrs = static_cast<double>(RETIRED_INSTRS);
+      uint64_t total_stlb_misses = sim_stats.misses.at(std::pair{access_type::TRANSLATION, handle_pkt.cpu});
+      STLB_MPKI = (static_cast<double>(total_stlb_misses) * 1000.0) / retired_instrs;
     }
   } else {
     if (handle_pkt.is_instr) {

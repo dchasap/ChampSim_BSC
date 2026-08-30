@@ -11,6 +11,11 @@
  * Note: This is only for cache use (no tlb)
  */
 
+// Global STLB MPKI (misses per kilo instruction). Updated in src/cache.cc
+// whenever an STLB miss occurs. Used by xPTP to gate its stress-aware
+// eviction policy (matching the ChampSim_old behavior).
+extern double STLB_MPKI;
+
 struct xptp : public champsim::modules::replacement {
 private:
     typedef struct _eviction_entry {

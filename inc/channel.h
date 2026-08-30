@@ -98,10 +98,13 @@ class channel
          uint32_t pgsz = 0, uint64_t vpn = 0)
         : address(addr), v_address(v_addr), data(data_), pf_metadata(pf_meta), instr_depend_on_me(deps)
     {
-  #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
+#if defined(ENABLE_MULTIPLE_PAGE_SIZE)
       page_size = pgsz;
       base_vpn = vpn;
-  #endif
+#else
+      (void)pgsz;
+      (void)vpn;
+#endif
     }
     explicit response(request req)
       : response(req.address, req.v_address, req.data, req.pf_metadata, req.instr_depend_on_me

@@ -62,27 +62,27 @@ uint64_t get_sampled_cache_tag(uint64_t x, int log2_block_size, int log2_num_set
     return x;
 }
 
-int time_elapsed(int global, int local, int timestamp_bits)
+int time_elapsed(int global, uint64_t local, int timestamp_bits)
 {
-    if (global >= local) {
-        return global - local;
+    if (global >= static_cast<int>(local)) {
+        return global - static_cast<int>(local);
     }
     global = global + (1 << timestamp_bits);
-    return global - local;
+    return global - static_cast<int>(local);
 }
 
 int temporal_difference(int init, int sample, double temp_difference, int inf_rd)
 {
     if (sample > init) {
-        int diff = sample - init;
+        double diff = static_cast<double>(sample - init);
         diff = diff * temp_difference;
-        diff = std::min(1, diff);
-        return std::min(init + diff, inf_rd);
+        diff = std::min(1.0, diff);
+        return std::min(init + static_cast<int>(diff), inf_rd);
     } else if (sample < init) {
-        int diff = init - sample;
+        double diff = static_cast<double>(init - sample);
         diff = diff * temp_difference;
-        diff = std::min(1, diff);
-        return std::max(init - diff, 0);
+        diff = std::min(1.0, diff);
+        return std::max(init - static_cast<int>(diff), 0);
     } else {
         return init;
     }
@@ -104,11 +104,11 @@ void detrain(std::unordered_map<uint32_t, int>& rdp, int signature, int inf_rd)
     }
 }
 
-bool is_sampled_set(int set, int log2_num_set, int log2_sampled_sets)
+bool is_sampled_set(long set, int log2_num_set, int log2_sampled_sets)
 {
     int mask_length = log2_num_set - log2_sampled_sets;
     int mask = (1 << mask_length) - 1;
-    return (set & mask) == ((set >> (log2_num_set - mask_length)) & mask);
+    return (static_cast<int>(set) & mask) == ((static_cast<int>(set) >> (log2_num_set - mask_length)) & mask);
 }
 
 int search_sampled_cache(const std::vector<mockingjay::SampledCacheLine*>& sampled_set, uint64_t blockAddress)
@@ -220,9 +220,10 @@ long mockingjay::find_victim(uint32_t triggering_cpu, uint64_t instr_id, long se
         }
     }
 
-    uint64_t pc_signature = get_pc_signature(ip.to<uint64_t>(), false, type == access_type::PREFETCH, triggering_cpu, PC_SIGNATURE_BITS);
+    uint32_t pc_signature =
+        static_cast<uint32_t>(get_pc_signature(ip.to<uint64_t>(), false, type == access_type::PREFETCH, triggering_cpu, PC_SIGNATURE_BITS));
     if (type != access_type::WRITE && rdp.count(pc_signature) &&
-        (rdp[pc_signature] > MAX_RD || rdp[pc_signature] / GRANULARITY > max_etr)) {
+        (rdp.at(pc_signature) > MAX_RD || rdp.at(pc_signature) / GRANULARITY > max_etr)) {
         return intern_->NUM_WAY;
     }
 
@@ -248,7 +249,7 @@ void mockingjay::update_replacement_state(uint32_t triggering_cpu, long set, lon
         return;
     }
 
-    uint64_t pc = get_pc_signature(ip.to<uint64_t>(), hit, type == access_type::PREFETCH, triggering_cpu, PC_SIGNATURE_BITS);
+    uint32_t pc = static_cast<uint32_t>(get_pc_signature(ip.to<uint64_t>(), hit, type == access_type::PREFETCH, triggering_cpu, PC_SIGNATURE_BITS));
 
     if (is_sampled_set(set, LOG2_NUM_SET, LOG2_SAMPLED_SETS)) {
         uint32_t sampled_cache_index = get_sampled_cache_index(full_addr.to<uint64_t>(), LOG2_BLOCK_SIZE, LOG2_NUM_SET, LOG2_SAMPLED_CACHE_SETS);
@@ -256,16 +257,16 @@ void mockingjay::update_replacement_state(uint32_t triggering_cpu, long set, lon
         int sampled_cache_way = search_sampled_cache(sampled_cache[sampled_cache_index], sampled_cache_tag);
 
         if (sampled_cache_way > -1) {
-            uint64_t last_signature = sampled_cache[sampled_cache_index][sampled_cache_way]->signature;
+            uint32_t last_signature = static_cast<uint32_t>(sampled_cache[sampled_cache_index][sampled_cache_way]->signature);
             uint64_t last_timestamp = sampled_cache[sampled_cache_index][sampled_cache_way]->timestamp;
             int sample = time_elapsed(current_timestamp[set], last_timestamp, TIMESTAMP_BITS);
 
             if (sample <= INF_RD) {
                 if (type == access_type::PREFETCH) {
-                    sample = sample * FLEXMIN_PENALTY;
+                    sample = static_cast<int>(static_cast<double>(sample) * FLEXMIN_PENALTY);
                 }
                 if (rdp.count(last_signature)) {
-                    int init = rdp[last_signature];
+                    int init = rdp.at(last_signature);
                     rdp[last_signature] = temporal_difference(init, sample, TEMP_DIFFERENCE, INF_RD);
                 } else {
                     rdp[last_signature] = sample;
@@ -289,14 +290,14 @@ void mockingjay::update_replacement_state(uint32_t triggering_cpu, long set, lon
             if (sample > INF_RD) {
                 lru_way = w;
                 lru_rd = INF_RD + 1;
-                detrain(rdp, sampled_cache[sampled_cache_index][w]->signature, INF_RD);
+                detrain(rdp, static_cast<uint32_t>(sampled_cache[sampled_cache_index][w]->signature), INF_RD);
             } else if (sample > lru_rd) {
                 lru_way = w;
                 lru_rd = sample;
             }
         }
         if (lru_way >= 0)
-            detrain(rdp, sampled_cache[sampled_cache_index][lru_way]->signature, INF_RD);
+            detrain(rdp, static_cast<uint32_t>(sampled_cache[sampled_cache_index][lru_way]->signature), INF_RD);
 
         for (int w = 0; w < SAMPLED_CACHE_WAYS; w++) {
             if (sampled_cache[sampled_cache_index][w]->valid == false) {
@@ -329,10 +330,10 @@ void mockingjay::update_replacement_state(uint32_t triggering_cpu, long set, lon
                 etr[set][way] = INF_ETR;
             }
         } else {
-            if (rdp[pc] > MAX_RD) {
+            if (rdp.at(pc) > MAX_RD) {
                 etr[set][way] = INF_ETR;
             } else {
-                etr[set][way] = rdp[pc] / GRANULARITY;
+                etr[set][way] = rdp.at(pc) / GRANULARITY;
             }
         }
     }

@@ -101,7 +101,8 @@ void VirtualMemory::populate_pages()
         ((pool_start_byte + num_small_pages * PAGE_SIZE) + LARGE_PAGE_SIZE - 1) / LARGE_PAGE_SIZE * pages_per_large_frame;
     for (uint64_t f = 0; f < num_large_frames; ++f) {
       champsim::page_number frame_base{first_frame_page + f * pages_per_large_frame};
-      if ((frame_base.to<uint64_t>() + pages_per_large_frame) * PAGE_SIZE <= dram.size().count()) {
+      if ((frame_base.to<uint64_t>() + pages_per_large_frame) * PAGE_SIZE <=
+          static_cast<uint64_t>(dram.size().count())) {
         large_frame_free_list.push_back(frame_base);
       }
     }

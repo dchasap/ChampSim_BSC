@@ -15,12 +15,6 @@
  * Note: This is only for cache use (no tlb)
  */
 
-// In ChampSim_new, STLB_MPKI is not directly available. The old code used
-// `extern double STLB_MPKI;` which was updated by the TLB code. In the new
-// system, this information would need to be sourced from the vmem or stats.
-// For now, we initialize it to 0.0 and provide a way to set it via env var.
-double STLB_MPKI = 0.0;
-
 // XPTP requires the EXPAND_PACKET macro to be defined so that is_instr and is_pte
 // are available to the replacement policy. Without it, the policy cannot correctly
 // distinguish instruction/PTE accesses, so we refuse to compile.
@@ -28,6 +22,11 @@ double STLB_MPKI = 0.0;
 #error "XPTP replacement policy requires the build to define EXPAND_PACKET. \
 Add -DEXPAND_PACKET to your CXXFLAGS or build configuration."
 #endif
+
+// Global STLB MPKI - updated by CACHE code in src/cache.cc whenever STLB misses occur.
+// This matches the ChampSim_old behavior where STLB_MPKI was computed from TLB misses
+// and used by xPTP to gate its stress-aware eviction policy.
+double STLB_MPKI = 0.0;
 
 xptp::xptp(CACHE* cache) : xptp(cache, cache->NUM_SET, cache->NUM_WAY) {}
 
