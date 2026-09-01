@@ -26,9 +26,10 @@ bool va_ampm_lite::check_cl_prefetch(champsim::block_number v_addr)
   return (region.has_value() && region->prefetch_map.at(page_offset.to<std::size_t>()));
 }
 
-uint32_t va_ampm_lite::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
-                                                uint32_t metadata_in)
+champsim::modules::pf_meta_t va_ampm_lite::prefetcher_cache_operate(champsim::address addr, champsim::address ip, uint8_t cache_hit, bool useful_prefetch, access_type type,
+                                                   champsim::modules::pf_meta_t metadata_in)
 {
+
   auto [current_vpn, page_offset] = page_and_offset(addr);
   champsim::block_number block_addr{addr};
   auto demand_region = regions.check_hit(region_type{current_vpn});
@@ -76,7 +77,7 @@ uint32_t va_ampm_lite::prefetcher_cache_operate(champsim::address addr, champsim
   return metadata_in;
 }
 
-uint32_t va_ampm_lite::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, uint32_t metadata_in)
+champsim::modules::pf_meta_t va_ampm_lite::prefetcher_cache_fill(champsim::address addr, long set, long way, uint8_t prefetch, champsim::address evicted_addr, champsim::modules::pf_meta_t metadata_in)
 {
   return metadata_in;
 }

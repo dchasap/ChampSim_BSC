@@ -32,6 +32,7 @@
 #include "chrono.h"
 #include "dram_stats.h"
 #include "extent_set.h"
+#include "modules.h"
 #include "operable.h"
 
 struct DRAM_ADDRESS_MAPPING {
@@ -101,7 +102,7 @@ struct DRAM_CHANNEL final : public champsim::operable {
 
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 
-    uint32_t pf_metadata = 0;
+    champsim::modules::pf_meta_t pf_metadata = 0;
 
   #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
     uint32_t page_size = 0;

@@ -99,9 +99,15 @@ struct btb : public bound_to<O3_CPU> {
   constexpr static bool has_btb_prediction = decltype(predict_branch_member_impl<T, Args...>(0))::value;
 };
 
+#if defined(EXPAND_PREFETCH)
+using pf_meta_t = uint64_t;
+#else
+using pf_meta_t = uint32_t;
+#endif
+
 struct prefetcher : public bound_to<CACHE> {
   explicit prefetcher(CACHE* cache) : bound_to<CACHE>(cache) {}
-  bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const;
+  bool prefetch_line(champsim::address pf_addr, bool fill_this_level, pf_meta_t prefetch_metadata) const;
   [[deprecated]] bool prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const;
 
   template <typename T, typename... Args>

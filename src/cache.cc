@@ -173,7 +173,11 @@ CACHE::fill_type CACHE::fill_type::merge(fill_type predecessor, fill_type succes
   return retval;
 }
 
+#if defined(EXPAND_PREFETCH)
+auto CACHE::fill_block(fill_type fill, uint64_t metadata) -> BLOCK
+#else
 auto CACHE::fill_block(fill_type fill, uint32_t metadata) -> BLOCK
+#endif
 {
   CACHE::BLOCK to_fill;
   to_fill.valid = true;
@@ -842,7 +846,13 @@ long CACHE::invalidate_entry(champsim::address inval_addr)
   return std::distance(begin, inv_way);
 }
 
-bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata
+#if defined(EXPAND_PREFETCH)
+using pf_meta_t = uint64_t;
+#else
+using pf_meta_t = uint32_t;
+#endif
+
+bool CACHE::prefetch_line(champsim::address pf_addr, bool fill_this_level, pf_meta_t prefetch_metadata
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
                           ,
                           uint32_t page_size, uint64_t base_vpn
@@ -1137,14 +1147,14 @@ std::vector<double> CACHE::get_pq_occupancy_ratio() const { return ::occupancy_r
 
 void CACHE::impl_prefetcher_initialize() const { pref_module_pimpl->impl_prefetcher_initialize(); }
 
-uint32_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
-                                              uint32_t metadata_in) const
+champsim::modules::pf_meta_t CACHE::impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
+                                              champsim::modules::pf_meta_t metadata_in) const
 {
   return pref_module_pimpl->impl_prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in);
 }
 
-uint32_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
-                                           uint32_t metadata_in) const
+champsim::modules::pf_meta_t CACHE::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
+                                           champsim::modules::pf_meta_t metadata_in) const
 {
   return pref_module_pimpl->impl_prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_in);
 }

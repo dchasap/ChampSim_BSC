@@ -58,7 +58,11 @@ class PageTableWalker : public champsim::operable
     std::vector<uint64_t> instr_depend_on_me{};
     std::vector<std::deque<response_type>*> to_return{};
 
+#if defined(EXPAND_PREFETCH)
+    uint64_t pf_metadata = 0;
+#else
     uint32_t pf_metadata = 0;
+#endif
     uint32_t cpu = std::numeric_limits<uint32_t>::max();
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
 

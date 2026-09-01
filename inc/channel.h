@@ -52,7 +52,11 @@ class channel
     uint8_t asid[2] = {std::numeric_limits<uint8_t>::max(), std::numeric_limits<uint8_t>::max()};
     access_type type{access_type::LOAD};
 
+#if defined(EXPAND_PREFETCH)
+    uint64_t pf_metadata = 0;
+#else
     uint32_t pf_metadata = 0;
+#endif
     uint32_t cpu = std::numeric_limits<uint32_t>::max();
 
     champsim::address address{};
@@ -86,7 +90,11 @@ class channel
     champsim::address address{};
     champsim::address v_address{};
     champsim::address data{};
+#if defined(EXPAND_PREFETCH)
+    uint64_t pf_metadata = 0;
+#else
     uint32_t pf_metadata = 0;
+#endif
     std::vector<uint64_t> instr_depend_on_me{};
 
   #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
@@ -94,9 +102,15 @@ class channel
     uint64_t base_vpn = 0;
   #endif
 
+#if defined(EXPAND_PREFETCH)
+    response(champsim::address addr, champsim::address v_addr, champsim::address data_, uint64_t pf_meta, std::vector<uint64_t> deps,
+         uint32_t pgsz = 0, uint64_t vpn = 0)
+        : address(addr), v_address(v_addr), data(data_), pf_metadata(pf_meta), instr_depend_on_me(deps)
+#else
     response(champsim::address addr, champsim::address v_addr, champsim::address data_, uint32_t pf_meta, std::vector<uint64_t> deps,
          uint32_t pgsz = 0, uint64_t vpn = 0)
         : address(addr), v_address(v_addr), data(data_), pf_metadata(pf_meta), instr_depend_on_me(deps)
+#endif
     {
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
       page_size = pgsz;

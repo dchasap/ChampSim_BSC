@@ -113,7 +113,15 @@ auto PageTableWalker::step_translation(const mshr_type& source) -> std::optional
   request_type packet;
   packet.address = source.address;
   packet.v_address = source.v_address;
+#if defined(EXPAND_PREFETCH)
+  // Encode both translation_level (lower 4 bits) and VPN (upper bits) for standalone PTE prefetchers
+  // (e.g., child_ideal). VPN is derived from the source v_address page number.
+  const uint64_t vpn = source.v_address.slice_upper(champsim::data::bits{champsim::lg2(PAGE_SIZE)}).to<uint64_t>();
+  const uint64_t vpn_mask_60 = (1ULL << 60) - 1;
+  packet.pf_metadata = ((vpn & vpn_mask_60) << 4) | (static_cast<uint64_t>(source.translation_level) & 0xF);
+#else
   packet.pf_metadata = source.pf_metadata;
+#endif
   packet.cpu = source.cpu;
   packet.asid[0] = source.asid[0];
   packet.asid[1] = source.asid[1];

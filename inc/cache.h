@@ -81,7 +81,11 @@ class CACHE : public champsim::operable
     champsim::address ip;
     uint64_t instr_id;
 
+#if defined(EXPAND_PREFETCH)
+    uint64_t pf_metadata;
+#else
     uint32_t pf_metadata;
+#endif
     uint32_t cpu;
 
     access_type type;
@@ -141,7 +145,11 @@ public:
 
     struct returned_value {
       champsim::address data;
+#if defined(EXPAND_PREFETCH)
+      uint64_t pf_metadata;
+#else
       uint32_t pf_metadata;
+#endif
     };
     champsim::waitable<returned_value> data_promise{};
     uint32_t cpu;
@@ -188,7 +196,11 @@ public:
   using BLOCK = champsim::cache_block;
 
 private:
+#if defined(EXPAND_PREFETCH)
+  static BLOCK fill_block(fill_type fill, uint64_t metadata);
+#else
   static BLOCK fill_block(fill_type fill, uint32_t metadata);
+#endif
   using set_type = std::vector<BLOCK>;
 
   std::pair<set_type::iterator, set_type::iterator> get_set_span(champsim::address address);
@@ -221,9 +233,13 @@ private:
   class PrefetchBuffer {
   public:
     struct PBEntry {
-      champsim::address data;
-      champsim::chrono::clock::time_point insert_time;
+      champsim::address data{};
+      champsim::chrono::clock::time_point insert_time{};
+#if defined(EXPAND_PREFETCH)
+      uint64_t pf_metadata = 0;
+#else
       uint32_t pf_metadata = 0;
+#endif
       uint8_t type = 0;
 #if defined(EXPAND_PACKET)
       bool is_pte = false;
@@ -244,6 +260,15 @@ private:
       std::cout << "PREFETCH_BUFFER: map-based (unbounded, collision-free)" << std::endl;
     }
 
+#if defined(EXPAND_PREFETCH)
+    void insert(const champsim::address& addr, const champsim::address& data, uint64_t pf_metadata, uint8_t type,
+                champsim::chrono::clock::time_point insert_time
+#if defined(EXPAND_PACKET)
+                ,
+                bool is_pte, bool is_instr, uint8_t pte_level
+#endif
+    )
+#else
     void insert(const champsim::address& addr, const champsim::address& data, uint32_t pf_metadata, uint8_t type,
                 champsim::chrono::clock::time_point insert_time
 #if defined(EXPAND_PACKET)
@@ -251,6 +276,7 @@ private:
                 bool is_pte, bool is_instr, uint8_t pte_level
 #endif
     )
+#endif
     {
       auto& e = entries[addr]; // insert or overwrite
       e.data = data;
@@ -359,9 +385,17 @@ public:
 #if defined(ENABLE_MULTIPLE_PAGE_SIZE)
   /*! Issue a prefetch whose virtual address belongs to a known page-size class (see O3_CPU::classify_page()).
    *  Unclassified prefetches default to class 0; VirtualMemory resolves the authoritative granularity. */
+#if defined(EXPAND_PREFETCH)
+  bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint64_t prefetch_metadata, uint32_t page_size = 0, uint64_t base_vpn = 0);
+#else
   bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata, uint32_t page_size = 0, uint64_t base_vpn = 0);
+#endif
+#else
+#if defined(EXPAND_PREFETCH)
+  bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint64_t prefetch_metadata);
 #else
   bool prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata);
+#endif
 #endif
 
   [[deprecated]] bool prefetch_line(uint64_t pf_addr, bool fill_this_level, uint32_t prefetch_metadata);
@@ -379,10 +413,17 @@ public:
     virtual void bind(CACHE* cache) = 0;
 
     virtual void impl_prefetcher_initialize() = 0;
+#if defined(EXPAND_PREFETCH)
+    virtual uint64_t impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
+                                                   uint64_t metadata_in) = 0;
+    virtual uint64_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
+                                                uint64_t metadata_in) = 0;
+#else
     virtual uint32_t impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
                                                    uint32_t metadata_in) = 0;
     virtual uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
                                                 uint32_t metadata_in) = 0;
+#endif
     virtual void impl_prefetcher_cycle_operate() = 0;
     virtual void impl_prefetcher_final_stats() = 0;
     virtual void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) = 0;
@@ -428,10 +469,10 @@ public:
     }
 
     void impl_prefetcher_initialize() final;
-    [[nodiscard]] uint32_t impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
-                                                         uint32_t metadata_in) final;
-    [[nodiscard]] uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
-                                                      uint32_t metadata_in) final;
+    [[nodiscard]] champsim::modules::pf_meta_t impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
+                                                         champsim::modules::pf_meta_t metadata_in) final;
+    [[nodiscard]] champsim::modules::pf_meta_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
+                                                      champsim::modules::pf_meta_t metadata_in) final;
     void impl_prefetcher_cycle_operate() final;
     void impl_prefetcher_final_stats() final;
     void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) final;
@@ -479,10 +520,10 @@ public:
 
   // NOLINTBEGIN(readability-make-member-function-const): legacy modules use non-const hooks
   void impl_prefetcher_initialize() const;
-  [[nodiscard]] uint32_t impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
-                                                       uint32_t metadata_in) const;
-  [[nodiscard]] uint32_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
-                                                    uint32_t metadata_in) const;
+  [[nodiscard]] champsim::modules::pf_meta_t impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit, bool useful_prefetch, access_type type,
+                                                       champsim::modules::pf_meta_t metadata_in) const;
+  [[nodiscard]] champsim::modules::pf_meta_t impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch, champsim::address evicted_addr,
+                                                    champsim::modules::pf_meta_t metadata_in) const;
   void impl_prefetcher_cycle_operate() const;
   void impl_prefetcher_final_stats() const;
   void impl_prefetcher_branch_operate(champsim::address ip, uint8_t branch_type, champsim::address branch_target) const;
@@ -562,6 +603,49 @@ void CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_initialize()
   std::apply([&](auto&... p) { (..., process_one(p)); }, intern_);
 }
 
+#if defined(EXPAND_PREFETCH)
+template <typename... Ps>
+uint64_t CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit,
+                                                                              bool useful_prefetch, access_type type, uint64_t metadata_in)
+{
+  using return_type = uint64_t;
+  [[maybe_unused]] auto process_one = [&](auto& p) {
+    using namespace champsim::modules;
+    /* Strong addresses */
+    if constexpr (prefetcher::has_cache_operate<decltype(p), champsim::address, champsim::address, bool, bool, access_type, uint64_t>)
+      return return_type{p.prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, type, metadata_in)};
+
+    /* Strong addresses, raw integer access type */
+    if constexpr (prefetcher::has_cache_operate<decltype(p), champsim::address, champsim::address, bool, bool, std::underlying_type_t<access_type>, uint64_t>)
+      return return_type{p.prefetcher_cache_operate(addr, ip, cache_hit, useful_prefetch, champsim::to_underlying(type), metadata_in)};
+
+    /* Raw integer addresses, no useful_prefetch parameter, raw integer access type */
+    if constexpr (prefetcher::has_cache_operate<decltype(p), uint64_t, uint64_t, bool, std::underlying_type_t<access_type>, uint64_t>)
+      return return_type{p.prefetcher_cache_operate(addr.to<uint64_t>(), ip.to<uint64_t>(), cache_hit, champsim::to_underlying(type), metadata_in)};
+
+    return return_type{};
+  };
+
+  return std::apply([&](auto&... p) { return (return_type{} ^ ... ^ process_one(p)); }, intern_);
+}
+
+template <typename... Ps>
+uint64_t CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cache_fill(champsim::address addr, long set, long way, bool prefetch,
+                                                                           champsim::address evicted_addr, uint64_t metadata_in)
+{
+  using return_type = uint64_t;
+  [[maybe_unused]] auto process_one = [&](auto& p) {
+    using namespace champsim::modules;
+    if constexpr (prefetcher::has_cache_fill<decltype(p), champsim::address, long, long, bool, champsim::address, uint64_t>)
+      return return_type{p.prefetcher_cache_fill(addr, set, way, prefetch, evicted_addr, metadata_in)};
+    if constexpr (prefetcher::has_cache_fill<decltype(p), uint64_t, long, long, bool, uint64_t, uint64_t>)
+      return return_type{p.prefetcher_cache_fill(addr.to<uint64_t>(), set, way, prefetch, evicted_addr.to<uint64_t>(), metadata_in)};
+    return return_type{};
+  };
+
+  return std::apply([&](auto&... p) { return (return_type{} ^ ... ^ process_one(p)); }, intern_);
+}
+#else
 template <typename... Ps>
 uint32_t CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cache_operate(champsim::address addr, champsim::address ip, bool cache_hit,
                                                                               bool useful_prefetch, access_type type, uint32_t metadata_in)
@@ -603,6 +687,7 @@ uint32_t CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cache_fill(champ
 
   return std::apply([&](auto&... p) { return (return_type{} ^ ... ^ process_one(p)); }, intern_);
 }
+#endif
 
 template <typename... Ps>
 void CACHE::prefetcher_module_model<Ps...>::impl_prefetcher_cycle_operate()

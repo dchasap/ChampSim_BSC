@@ -18,7 +18,7 @@
 
 #include "cache.h"
 
-bool champsim::modules::prefetcher::prefetch_line(champsim::address pf_addr, bool fill_this_level, uint32_t prefetch_metadata) const
+bool champsim::modules::prefetcher::prefetch_line(champsim::address pf_addr, bool fill_this_level, champsim::modules::pf_meta_t prefetch_metadata) const
 {
   return intern_->prefetch_line(pf_addr, fill_this_level, prefetch_metadata);
 }

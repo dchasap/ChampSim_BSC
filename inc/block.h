@@ -30,7 +30,11 @@ struct cache_block {
   champsim::address v_address{};
   champsim::address data{};
 
+#if defined(EXPAND_PREFETCH)
+  uint64_t pf_metadata = 0;
+#else
   uint32_t pf_metadata = 0;
+#endif
 
 #if defined(EXPAND_PACKET)
   bool is_instr = false;
